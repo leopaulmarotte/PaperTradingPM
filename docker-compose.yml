@@ -1,57 +1,112 @@
-version: "3.9"
-
 services:
 
+  # =========================
+  # Frontend – Streamlit (DEV)
+  # =========================
   frontend:
     build: ./frontend
     container_name: streamlit_frontend
+
+    # On monte le code local dans le conteneur
+    # => toute modification de app.py est visible immédiatement
+    volumes:
+      - ./frontend:/app
+
     ports:
-      - "8501:8501"
+      - "8501:8501"  # Accès via http://localhost:8501
+
     depends_on:
       - backend
+
     environment:
       - API_URL=http://backend:8000
+      - STREAMLIT_ENV=development
+
+    # Streamlit redémarre automatiquement quand le code change
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+
     networks:
       - app_network
 
+
+  # =========================
+  # Backend – FastAPI (DEV)
+  # =========================
   backend:
     build: ./backend
     container_name: fastapi_backend
+
+    # On monte le code backend local
+    # => pas besoin de rebuild quand tu modifies un .py
+    volumes:
+      - ./backend:/app
+
     ports:
-      - "8000:8000"
+      - "8000:8000"  # Accès API + Swagger (/docs)
+
     depends_on:
       - mongodb
       - redis
+
     environment:
       - MONGO_URI=mongodb://mongodb:27017/app_db
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - ENV=development
+
+    # uvicorn --reload = hot reload automatique
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
     networks:
       - app_network
 
+
+  # =========================
+  # MongoDB – DEV
+  # =========================
   mongodb:
     image: mongo:7
     container_name: mongodb
+
     restart: always
+
+    # 💾 Données persistantes (ne disparaissent PAS)
     volumes:
       - mongo_data:/data/db
+
     ports:
-      - "27017:27017"
+      - "27017:27017"  # Accès depuis Mongo Compass / shell local
+
     networks:
       - app_network
 
+
+  # =========================
+  # Redis – DEV
+  # =========================
   redis:
     image: redis:7
     container_name: redis
+
     restart: always
+
     ports:
-      - "6379:6379"
+      - "6379:6379"  # Debug possible via redis-cli local
+
     networks:
       - app_network
 
+
+# =========================
+# Réseau Docker
+# =========================
 networks:
   app_network:
     driver: bridge
 
+
+# =========================
+# Volumes persistants
+# =========================
 volumes:
   mongo_data:
