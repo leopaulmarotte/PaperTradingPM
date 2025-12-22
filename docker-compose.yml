@@ -70,7 +70,7 @@ services:
 
     restart: always
 
-    # 💾 Données persistantes (ne disparaissent PAS)
+    # Données persistantes (ne disparaissent PAS)
     volumes:
       - mongo_data:/data/db
 
