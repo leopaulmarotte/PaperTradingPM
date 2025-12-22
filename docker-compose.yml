@@ -96,6 +96,29 @@ services:
       - app_network
 
 
+
+
+
+  # ======================
+  # Worker Polymarket → Redis
+  # ======================
+  worker:
+    build: ./worker                 # dossier contenant le Dockerfile
+    container_name: live_data_worker
+    depends_on:
+      - redis                       # le worker a besoin de Redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # éventuellement :
+      # - POLYMARKET_API_KEY=xxx
+    networks:
+      - app_network
+
+
+
+
+
 # =========================
 # Réseau Docker
 # =========================
