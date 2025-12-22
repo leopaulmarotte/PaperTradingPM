@@ -1,5 +1,24 @@
-fastapi
-uvicorn
-pymongo
-redis
-python-dotenv
+# Web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Database drivers
+motor>=3.3.0              # Async MongoDB driver
+redis>=5.0.0              # Redis with async support
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Rate limiting
+slowapi>=0.1.9
+
+# HTTP client for Polymarket API
+httpx>=0.25.0
+
+# Configuration
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+
+# WebSocket support (included in uvicorn[standard])
+websockets>=12.0
