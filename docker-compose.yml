@@ -49,9 +49,9 @@ services:
       - redis
 
     environment:
-      - MONGO_URI=mongodb://mongodb:27017/app_db
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - MONGO_URI=${MONGO_URI}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
       - ENV=development
 
     # uvicorn --reload = hot reload automatique
@@ -70,12 +70,11 @@ services:
 
     restart: always
 
-    # Données persistantes (ne disparaissent PAS)
     volumes:
       - mongo_data:/data/db
 
     ports:
-      - "27017:27017"  # Accès depuis Mongo Compass / shell local
+      - "27017:27017" 
 
     networks:
       - app_network
