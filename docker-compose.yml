@@ -115,9 +115,24 @@ services:
       - BATCH_SIZE=500
       - LOG_LEVEL=INFO
     restart: unless-stopped
+
     networks:
       - app_network
 
+
+  worker:
+    build: ./worker
+    container_name: live_data_worker
+    depends_on:
+      - redis
+    volumes:
+      - ./worker:/app
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - CLOB_URL=${CLOB_URL}
+      - API_KEY=${API_KEY}
+    command: python worker.py
 
   # ======================
   # Worker Placeholder (for future workers)
@@ -132,6 +147,7 @@ services:
   #     - REDIS_PORT=6379
   #   networks:
   #     - app_network
+
 
 
 
