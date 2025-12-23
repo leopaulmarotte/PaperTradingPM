@@ -121,12 +121,12 @@ services:
 
 
   worker:
-    build: ./worker
+    build: ./workers/live_data_worker
     container_name: live_data_worker
     depends_on:
       - redis
     volumes:
-      - ./worker:/app
+      - ./workers/live_data_worker:/app
     environment:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
