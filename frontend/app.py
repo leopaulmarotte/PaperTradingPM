@@ -88,25 +88,19 @@ class APIClient:
             return {"status": 0, "error": str(e)}
     
     # Auth endpoints
-    def login(self, username: str, password: str) -> dict:
+    def login(self, email: str, password: str) -> dict:
         """Login and get token."""
-        try:
-            resp = requests.post(
-                f"{self.base_url}/auth/token",
-                data={"username": username, "password": password},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=30,
-            )
-            return {"status": resp.status_code, "data": resp.json() if resp.text else None}
-        except Exception as e:
-            return {"status": 0, "error": str(e)}
+        return self._post("/auth/login", {
+            "email": email,
+            "password": password,
+        })
     
-    def register(self, email: str, username: str, password: str) -> dict:
+    def register(self, email: str, password: str) -> dict:
         """Register new user."""
         return self._post("/auth/register", {
             "email": email,
-            "username": username,
             "password": password,
+            "password_confirm": password,
         })
     
     def get_me(self) -> dict:
@@ -188,13 +182,13 @@ def show_login_form():
     with tab1:
         st.subheader("Login")
         with st.form("login_form"):
-            username = st.text_input("Username")
+            email = st.text_input("Email")
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button("Login")
             
             if submitted:
-                if username and password:
-                    result = api.login(username, password)
+                if email and password:
+                    result = api.login(email, password)
                     if result["status"] == 200:
                         st.session_state.token = result["data"]["access_token"]
                         # Fetch user info
@@ -207,28 +201,28 @@ def show_login_form():
                         error = result.get("data", {}).get("detail", result.get("error", "Login failed"))
                         st.error(f"Login failed: {error}")
                 else:
-                    st.warning("Please enter username and password")
+                    st.warning("Please enter email and password")
     
     with tab2:
         st.subheader("Register")
         with st.form("register_form"):
             email = st.text_input("Email")
-            new_username = st.text_input("Username", key="reg_username")
             new_password = st.text_input("Password", type="password", key="reg_password")
             confirm_password = st.text_input("Confirm Password", type="password")
             submitted = st.form_submit_button("Register")
             
             if submitted:
-                if not all([email, new_username, new_password, confirm_password]):
+                if not all([email, new_password, confirm_password]):
                     st.warning("Please fill all fields")
                 elif new_password != confirm_password:
                     st.error("Passwords do not match")
                 else:
-                    result = api.register(email, new_username, new_password)
+                    result = api.register(email, new_password)
                     if result["status"] in [200, 201]:
                         st.success("Registration successful! Please login.")
                     else:
                         error = result.get("data", {}).get("detail", result.get("error", "Registration failed"))
+                        st.error(f"Registration failed: {error}")
                         st.error(f"Registration failed: {error}")
 
 
@@ -238,8 +232,8 @@ def show_sidebar():
         st.title("📈 Paper Trading")
         
         if st.session_state.user:
-            st.write(f"👤 **{st.session_state.user.get('username', 'User')}**")
-            st.write(f"Role: {st.session_state.user.get('role', 'user')}")
+            st.write(f"👤 **{st.session_state.user.get('email', 'User')}**")
+            st.write(f"Role: {', '.join(st.session_state.user.get('roles', ['user']))}")
             
             if st.button("Logout"):
                 st.session_state.token = None

@@ -1,7 +1,7 @@
 """
 Portfolio model for trading database.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -20,7 +20,7 @@ class Portfolio(BaseModel):
         description="Starting paper money balance"
     )
     created_at: datetime = Field(
-        default_factory=datetime.now(datetime.UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Portfolio creation timestamp"
     )
     is_active: bool = Field(

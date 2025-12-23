@@ -23,7 +23,7 @@ services:
       - STREAMLIT_ENV=development
 
     # Streamlit redémarre automatiquement quand le code change
-    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
 
     networks:
       - app_network
@@ -55,7 +55,7 @@ services:
       - ENV=development
 
     # uvicorn --reload = hot reload automatique
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
     networks:
       - app_network
@@ -122,18 +122,16 @@ services:
   # ======================
   # Worker Placeholder (for future workers)
   # ======================
-  worker:
-    build: ./workers/live_data_worker
-    container_name: live_data_worker
-    depends_on:
-      - redis
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # éventuellement :
-      # - POLYMARKET_API_KEY=xxx
-    networks:
-      - app_network
+  # live-data-worker:
+  #   build: ./workers/live_data_worker
+  #   container_name: live_data_worker
+  #   depends_on:
+  #     - redis
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
+  #   networks:
+  #     - app_network
 
 
 

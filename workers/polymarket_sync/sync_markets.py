@@ -45,7 +45,7 @@ class SyncConfig(BaseSettings):
     markets_db_name: str = Field(default="markets_db")
     
     # Sync settings
-    sync_interval_minutes: int = Field(default=5)
+    sync_interval_minutes: int = Field(default=30)
     full_sync_interval_hours: int = Field(default=24)
     batch_size: int = Field(default=500)
     
@@ -487,6 +487,10 @@ class MarketSyncWorker:
         
         if last_full is None:
             return True
+        
+        # Ensure last_full is timezone-aware (MongoDB may return naive datetime)
+        if last_full.tzinfo is None:
+            last_full = last_full.replace(tzinfo=timezone.utc)
         
         elapsed_hours = (
             datetime.now(timezone.utc) - last_full

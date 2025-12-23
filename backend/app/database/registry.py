@@ -80,7 +80,3 @@ async def create_indexes(client: AsyncIOMotorClient) -> None:
     
     # Markets DB indexes
     await markets_db.create_market_indexes(client[markets_db.DB_NAME])
-    
-    # Markets DB indexes
-    markets = client[markets_db.DB_NAME]
-    await markets[markets_db.Collections.REGISTRY].create_index("condition_id")

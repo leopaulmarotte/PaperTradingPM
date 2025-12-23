@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.database.connections import get_mongo_client
 from app.database.databases import markets_db
 from app.dependencies.auth import get_current_active_user
-from app.dependencies.roles import require_role
+from app.dependencies.roles import require_roles
 from app.models.user import User, UserRole
 from app.schemas.market import (
     MarketSummary,
@@ -274,7 +274,7 @@ async def get_open_interest(
     "/admin/refresh",
     response_model=dict,
     summary="Manually trigger market refresh",
-    dependencies=[Depends(require_role(UserRole.ADMIN))],
+    dependencies=[Depends(require_roles(UserRole.ADMIN))],
 )
 async def admin_refresh_markets(
     market_service: MarketService = Depends(get_market_service),
