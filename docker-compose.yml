@@ -123,7 +123,7 @@ services:
   # Worker Placeholder (for future workers)
   # ======================
   worker:
-    build: ./worker/live_data_worker
+    build: ./workers/live_data_worker
     container_name: live_data_worker
     depends_on:
       - redis
