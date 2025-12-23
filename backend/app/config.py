@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     global_rate_limit_per_minute: int = 100
     
     # Polymarket API
+    gamma_url: str = "https://gamma-api.polymarket.com"
     clob_url: str = "https://clob.polymarket.com"
+    data_url: str = "https://data-api.polymarket.com"
     polymarket_api_key: str | None = None
     
     class Config:
