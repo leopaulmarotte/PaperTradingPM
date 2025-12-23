@@ -2,13 +2,17 @@
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 
+# Validation
+email-validator>=2.1.0    # Required for Pydantic EmailStr
+
 # Database drivers
 motor>=3.3.0              # Async MongoDB driver
 redis>=5.0.0              # Redis with async support
 
 # Authentication & Security
 python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+passlib>=1.7.4
+bcrypt==4.0.1             # Pin to 4.0.x for passlib compatibility
 
 # Rate limiting
 slowapi>=0.1.9
