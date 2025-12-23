@@ -100,13 +100,33 @@ services:
 
 
   # ======================
-  # Worker Polymarket → Redis
+  # Worker: Polymarket Market Sync
+  # ======================
+  polymarket-sync:
+    build: ./workers/polymarket_sync
+    container_name: polymarket_sync_worker
+    depends_on:
+      - mongodb
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MARKETS_DB_NAME=markets_db
+      - SYNC_INTERVAL_MINUTES=5
+      - FULL_SYNC_INTERVAL_HOURS=24
+      - BATCH_SIZE=500
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    networks:
+      - app_network
+
+
+  # ======================
+  # Worker Placeholder (for future workers)
   # ======================
   worker:
-    build: ./worker                 # dossier contenant le Dockerfile
+    build: ./worker/live_data_worker
     container_name: live_data_worker
     depends_on:
-      - redis                       # le worker a besoin de Redis
+      - redis
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
