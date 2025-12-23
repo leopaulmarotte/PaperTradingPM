@@ -1,6 +1,12 @@
 """
 Markets database configuration.
-Stores Polymarket data cache with dynamic collections per market slug.
+Stores Polymarket market metadata and price data.
+
+Structure:
+- markets: All market metadata from Gamma API (refreshed by worker)
+- price_history: Price history per token_id (lazy-loaded)
+- open_interest: Open interest snapshots (lazy-loaded)
+- _metadata: Database metadata
 """
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -10,70 +16,59 @@ DB_NAME = "markets_db"
 
 class Collections:
     """Collection names in markets_db."""
-    REGISTRY = "_registry"
+    MARKETS = "markets"           # Market metadata from Gamma API
+    PRICE_HISTORY = "price_history"  # Price history per token
+    OPEN_INTEREST = "open_interest"  # Open interest data
     METADATA = "_metadata"
     
-    @staticmethod
-    def market(slug: str) -> str:
-        """Generate collection name for a market slug."""
-        # Sanitize slug for collection name (replace problematic chars)
-        safe_slug = slug.replace(" ", "-").replace("/", "-").lower()
-        return f"market:{safe_slug}"
+    # Index definitions for each collection
+    INDEXES = {
+        "markets": [
+            {"keys": [("slug", 1)], "unique": True},
+            {"keys": [("condition_id", 1)], "unique": True},
+            {"keys": [("closed", 1)]},
+            {"keys": [("active", 1)]},
+            {"keys": [("volume_num", -1)]},
+            {"keys": [("liquidity_num", -1)]},
+            {"keys": [("end_date", 1)]},
+            {"keys": [("category", 1)]},
+            {"keys": [("question", "text")]},  # Text index for search
+        ],
+        "price_history": [
+            {"keys": [("token_id", 1)], "unique": True},
+            {"keys": [("condition_id", 1)]},
+            {"keys": [("last_updated_at", 1)]},
+        ],
+        "open_interest": [
+            {"keys": [("condition_id", 1)], "unique": True},
+            {"keys": [("last_updated_at", 1)]},
+        ],
+    }
 
 
-async def ensure_market_collection(
-    db: AsyncIOMotorDatabase, 
-    slug: str, 
-    market_info: dict
-) -> str:
-    """
-    Create market collection and register it if not exists.
-    
-    Args:
-        db: Markets database instance
-        slug: Market slug identifier
-        market_info: Market metadata (condition_id, question, outcomes, etc.)
-    
-    Returns:
-        Collection name for the market
-    """
-    collection_name = Collections.market(slug)
-    
-    # Check if already registered
-    existing = await db[Collections.REGISTRY].find_one({"_id": slug})
-    if existing:
-        # Update last_fetched_at
-        await db[Collections.REGISTRY].update_one(
-            {"_id": slug},
-            {"$set": {"last_fetched_at": datetime.now(timezone.utc)}}
-        )
-        return collection_name
-    
-    # Register new market collection
-    await db[Collections.REGISTRY].insert_one({
-        "_id": slug,
-        "collection_name": collection_name,
-        "condition_id": market_info.get("condition_id"),
-        "question": market_info.get("question"),
-        "outcomes": market_info.get("outcomes", []),
-        "created_at": datetime.now(timezone.utc),
-        "last_fetched_at": datetime.now(timezone.utc),
-    })
-    
-    return collection_name
-
-
-async def get_registered_markets(db: AsyncIOMotorDatabase) -> list[dict]:
-    """Get all registered market slugs from the registry."""
-    cursor = db[Collections.REGISTRY].find({})
-    return await cursor.to_list(length=None)
+async def create_market_indexes(db: AsyncIOMotorDatabase) -> None:
+    """Create indexes for markets database collections."""
+    for collection_name, indexes in Collections.INDEXES.items():
+        collection = db[collection_name]
+        for index_def in indexes:
+            keys = index_def["keys"]
+            kwargs = {k: v for k, v in index_def.items() if k != "keys"}
+            try:
+                await collection.create_index(keys, **kwargs)
+            except Exception:
+                # Index might already exist with different options
+                pass
 
 
 # Manifest for registry
 DB_MANIFEST = {
     "db_name": DB_NAME,
-    "purpose": "Polymarket data cache with dynamic per-market collections",
-    "collections": [Collections.REGISTRY, Collections.METADATA],
+    "purpose": "Polymarket market metadata and price data cache",
+    "collections": [
+        Collections.MARKETS,
+        Collections.PRICE_HISTORY,
+        Collections.OPEN_INTEREST,
+        Collections.METADATA,
+    ],
     "access_level": "standard",
-    "dynamic_collections": True,
 }
