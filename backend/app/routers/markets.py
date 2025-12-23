@@ -61,7 +61,7 @@ async def list_markets(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Results per page"),
     # Sorting
-    sort_by: Optional[str] = Query(None, description="Field to sort by"),
+    sort_by: Optional[str] = Query("volume", description="Field to sort by (volume, liquidity, volume_24h)"),
     sort_desc: bool = Query(True, description="Sort descending"),
 ):
     """
@@ -101,7 +101,7 @@ async def get_top_markets(
     current_user: Annotated[User, Depends(get_current_active_user)],
     market_service: MarketService = Depends(get_market_service),
     limit: int = Query(20, ge=1, le=100, description="Number of markets"),
-    sort_by: str = Query("volume_24h", description="Sort field: volume_24h, volume, liquidity"),
+    sort_by: str = Query("volume", description="Sort field: volume_24h, volume, liquidity"),
     active_only: bool = Query(True, description="Only active markets"),
 ):
     """

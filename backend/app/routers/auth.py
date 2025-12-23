@@ -16,6 +16,7 @@ from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
     TokenRefreshResponse,
+    UserInfoResponse,
 )
 from app.services.auth_service import AuthService
 
@@ -140,6 +141,7 @@ async def refresh_token(
 
 @router.get(
     "/me",
+    response_model=UserInfoResponse,
     summary="Get current user info",
 )
 async def get_current_user_info(

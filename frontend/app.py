@@ -51,11 +51,16 @@ class APIClient:
         self.base_url = base_url
     
     def _headers(self) -> dict:
-        """Get headers with auth token if available."""
-        headers = {"Content-Type": "application/json"}
+        """Get headers for requests."""
+        return {"Content-Type": "application/json"}
+    
+    def _get_params(self, params: Optional[dict] = None) -> dict:
+        """Get URL parameters including auth token if available."""
+        if params is None:
+            params = {}
         if st.session_state.token:
-            headers["Authorization"] = f"Bearer {st.session_state.token}"
-        return headers
+            params["token"] = st.session_state.token
+        return params
     
     def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
         """Make GET request."""
@@ -63,7 +68,7 @@ class APIClient:
             resp = requests.get(
                 f"{self.base_url}{endpoint}",
                 headers=self._headers(),
-                params=params,
+                params=self._get_params(params),
                 timeout=30,
             )
             return {"status": resp.status_code, "data": resp.json() if resp.text else None}
@@ -72,13 +77,14 @@ class APIClient:
         except Exception as e:
             return {"status": 0, "error": str(e)}
     
-    def _post(self, endpoint: str, data: dict) -> dict:
+    def _post(self, endpoint: str, data: dict, params: Optional[dict] = None) -> dict:
         """Make POST request."""
         try:
             resp = requests.post(
                 f"{self.base_url}{endpoint}",
                 headers=self._headers(),
                 json=data,
+                params=self._get_params(params) if st.session_state.token else params,
                 timeout=30,
             )
             return {"status": resp.status_code, "data": resp.json() if resp.text else None}
@@ -93,7 +99,7 @@ class APIClient:
         return self._post("/auth/login", {
             "email": email,
             "password": password,
-        })
+        }, params={})  # No token needed for login
     
     def register(self, email: str, password: str) -> dict:
         """Register new user."""
@@ -101,7 +107,7 @@ class APIClient:
             "email": email,
             "password": password,
             "password_confirm": password,
-        })
+        }, params={})  # No token needed for registration
     
     def get_me(self) -> dict:
         """Get current user profile."""
@@ -110,7 +116,7 @@ class APIClient:
     # Health endpoint
     def health(self) -> dict:
         """Check API health."""
-        return self._get("/health")
+        return self._get("/health", params={})
     
     # Markets endpoints
     def list_markets(

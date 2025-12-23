@@ -6,6 +6,8 @@ from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.models.user import UserRole, UserStatus
+
 
 class LoginRequest(BaseModel):
     """Login request body."""
@@ -65,3 +67,12 @@ class TokenPayload(BaseModel):
     roles: list[str] = Field(..., description="User roles")
     exp: datetime = Field(..., description="Expiration time")
     iat: datetime = Field(..., description="Issued at time")
+
+
+class UserInfoResponse(BaseModel):
+    """Current user information response."""
+    id: str = Field(..., description="User ID")
+    email: str = Field(..., description="User email")
+    roles: list[UserRole] = Field(..., description="User roles")
+    status: UserStatus = Field(..., description="Account status")
+    created_at: datetime = Field(..., description="Account creation timestamp")

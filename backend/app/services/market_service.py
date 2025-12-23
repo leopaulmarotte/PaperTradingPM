@@ -135,7 +135,15 @@ class MarketService:
             query.setdefault("liquidity_num", {})["$lte"] = filters.liquidity_max
         
         # Determine sort
+        sort_field_map = {
+            "volume_24h": "volume_24hr",
+            "volume": "volume_num",
+            "liquidity": "liquidity_num",
+            "end_date": "end_date_iso",
+        }
         sort_field = filters.sort_by or "volume_num"
+        # Map friendly name to DB field if needed
+        sort_field = sort_field_map.get(sort_field, sort_field)
         sort_dir = -1 if filters.sort_desc else 1
         
         # Get total count
