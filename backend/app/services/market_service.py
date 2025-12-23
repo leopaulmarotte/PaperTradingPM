@@ -1,14 +1,29 @@
 """
 Market service for lazy-loading Polymarket data.
+
+Provides:
+- Market metadata retrieval with lazy-loading from Gamma API
+- Price history fetching with caching
+- Open interest data
+- Market filtering and pagination for Streamlit
 """
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import UpdateOne
 
 from app.database.databases import markets_db
-from app.services.polymarket_api import PolymarketAPI
-from app.schemas.market import MarketResponse, PriceHistoryResponse
+from app.models.market import MarketMetadata, PriceHistory, OpenInterest
+from app.services.polymarket_api import get_polymarket_api
+from app.schemas.market import (
+    MarketSummary,
+    MarketDetailResponse,
+    MarketListResponse,
+    MarketFilterParams,
+    PriceHistoryResponse,
+    OpenInterestResponse,
+)
 
 
 class MarketService:
@@ -17,222 +32,528 @@ class MarketService:
     def __init__(self, db: AsyncIOMotorDatabase):
         """Initialize with markets database."""
         self.db = db
-        self.registry = db[markets_db.Collections.REGISTRY]
-        self.polymarket = PolymarketAPI()
+        self.markets_col = db[markets_db.Collections.MARKETS]
+        self.price_history_col = db[markets_db.Collections.PRICE_HISTORY]
+        self.open_interest_col = db[markets_db.Collections.OPEN_INTEREST]
     
-    async def get_market(self, market_id: str) -> Optional[MarketResponse]:
+    # ==================== Market Metadata ====================
+    
+    async def get_market_by_slug(
+        self,
+        slug: str,
+        force_refresh: bool = False,
+    ) -> Optional[MarketDetailResponse]:
         """
-        Get market by ID (slug or condition_id).
-        Lazy-loads from Polymarket API if not cached.
+        Get market by slug with lazy-loading.
         
         Args:
-            market_id: Market slug or condition_id
+            slug: Market slug identifier
+            force_refresh: Force fetch from API even if cached
             
         Returns:
-            MarketResponse or None if not found
+            MarketDetailResponse or None
         """
-        # Try to find in registry first (by slug or condition_id)
-        registry_entry = await self.registry.find_one({
-            "$or": [{"_id": market_id}, {"condition_id": market_id}]
-        })
+        # Check cache first
+        if not force_refresh:
+            doc = await self.markets_col.find_one({"slug": slug})
+            if doc:
+                return self._doc_to_detail_response(doc)
         
-        if registry_entry:
-            # Market is cached, load from collection
-            collection_name = registry_entry["collection_name"]
-            info_doc = await self.db[collection_name].find_one({"_id": "info"})
-            
-            if info_doc:
-                return self._doc_to_response(info_doc, registry_entry)
-        
-        # Not cached - fetch from Polymarket API
-        market_data = await self.polymarket.get_market(market_id)
+        # Fetch from Polymarket API
+        api = await get_polymarket_api()
+        market_data = await api.get_market_by_slug(slug)
         
         if not market_data:
             return None
         
-        # Cache the market
+        # Cache and return
         await self._cache_market(market_data)
+        return self._market_data_to_detail_response(market_data)
+    
+    async def get_market_by_condition_id(
+        self,
+        condition_id: str,
+        force_refresh: bool = False,
+    ) -> Optional[MarketDetailResponse]:
+        """
+        Get market by condition ID with lazy-loading.
         
-        return self._market_data_to_response(market_data)
+        Args:
+            condition_id: On-chain condition ID
+            force_refresh: Force fetch from API even if cached
+            
+        Returns:
+            MarketDetailResponse or None
+        """
+        # Check cache first
+        if not force_refresh:
+            doc = await self.markets_col.find_one({"condition_id": condition_id})
+            if doc:
+                return self._doc_to_detail_response(doc)
+        
+        # Fetch from Polymarket API
+        api = await get_polymarket_api()
+        market_data = await api.get_market_by_condition_id(condition_id)
+        
+        if not market_data:
+            return None
+        
+        # Cache and return
+        await self._cache_market(market_data)
+        return self._market_data_to_detail_response(market_data)
+    
+    async def list_markets(
+        self,
+        filters: MarketFilterParams,
+    ) -> MarketListResponse:
+        """
+        List markets with filtering and pagination.
+        Queries cached data in MongoDB.
+        
+        Args:
+            filters: Filter and pagination parameters
+            
+        Returns:
+            MarketListResponse with paginated results
+        """
+        # Build query
+        query: dict[str, Any] = {}
+        
+        if filters.closed is not None:
+            query["closed"] = filters.closed
+        if filters.active is not None:
+            query["active"] = filters.active
+        if filters.search:
+            query["$text"] = {"$search": filters.search}
+        if filters.volume_min is not None:
+            query["volume_num"] = {"$gte": filters.volume_min}
+        if filters.volume_max is not None:
+            query.setdefault("volume_num", {})["$lte"] = filters.volume_max
+        if filters.liquidity_min is not None:
+            query["liquidity_num"] = {"$gte": filters.liquidity_min}
+        if filters.liquidity_max is not None:
+            query.setdefault("liquidity_num", {})["$lte"] = filters.liquidity_max
+        
+        # Determine sort
+        sort_field = filters.sort_by or "volume_num"
+        sort_dir = -1 if filters.sort_desc else 1
+        
+        # Get total count
+        total = await self.markets_col.count_documents(query)
+        
+        # Calculate pagination
+        skip = (filters.page - 1) * filters.page_size
+        total_pages = (total + filters.page_size - 1) // filters.page_size
+        
+        # Fetch results
+        cursor = self.markets_col.find(query).sort(
+            sort_field, sort_dir
+        ).skip(skip).limit(filters.page_size)
+        
+        docs = await cursor.to_list(length=filters.page_size)
+        
+        markets = [self._doc_to_summary(doc) for doc in docs]
+        
+        return MarketListResponse(
+            markets=markets,
+            total=total,
+            page=filters.page,
+            page_size=filters.page_size,
+            total_pages=total_pages,
+            has_next=filters.page < total_pages,
+            has_prev=filters.page > 1,
+        )
+    
+    async def get_top_markets(
+        self,
+        limit: int = 20,
+        sort_by: str = "volume_24h",
+        active_only: bool = True,
+    ) -> list[MarketSummary]:
+        """
+        Get top markets by volume or liquidity.
+        
+        Args:
+            limit: Number of markets to return
+            sort_by: Field to sort by (volume_24h, liquidity, etc.)
+            active_only: Only return active markets
+            
+        Returns:
+            List of MarketSummary
+        """
+        query: dict[str, Any] = {}
+        if active_only:
+            query["closed"] = False
+            query["active"] = True
+        
+        # Map friendly names to DB fields
+        sort_field_map = {
+            "volume_24h": "volume_24hr",
+            "volume": "volume_num",
+            "liquidity": "liquidity_num",
+            "end_date": "end_date_iso",
+        }
+        sort_field = sort_field_map.get(sort_by, sort_by)
+        
+        cursor = self.markets_col.find(query).sort(
+            sort_field, -1
+        ).limit(limit)
+        
+        docs = await cursor.to_list(length=limit)
+        return [self._doc_to_summary(doc) for doc in docs]
+    
+    # ==================== Price History ====================
     
     async def get_price_history(
         self,
-        market_id: str,
-        outcome: Optional[str] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        slug: str,
+        outcome_index: int = 0,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        force_refresh: bool = False,
     ) -> Optional[PriceHistoryResponse]:
         """
-        Get price history for a market.
-        Lazy-loads from Polymarket API if not cached.
+        Get price history for a market outcome.
+        Lazy-loads from CLOB API if not cached.
         
         Args:
-            market_id: Market slug or condition_id
-            outcome: Optional specific outcome to filter
-            start_date: Optional start date filter
-            end_date: Optional end date filter
+            slug: Market slug
+            outcome_index: Outcome index (0 or 1 for binary markets)
+            start_ts: Start Unix timestamp filter
+            end_ts: End Unix timestamp filter
+            force_refresh: Force fetch from API
             
         Returns:
-            PriceHistoryResponse or None if market not found
+            PriceHistoryResponse or None
         """
-        # Ensure market is cached
-        market = await self.get_market(market_id)
-        if not market:
+        # Get market to find token ID
+        market_doc = await self.markets_col.find_one({"slug": slug})
+        if not market_doc:
+            # Try to lazy-load market first
+            market = await self.get_market_by_slug(slug)
+            if not market:
+                return None
+            market_doc = await self.markets_col.find_one({"slug": slug})
+        
+        clob_token_ids = market_doc.get("clob_token_ids", [])
+        outcomes = market_doc.get("outcomes", [])
+        
+        if outcome_index >= len(clob_token_ids):
             return None
         
-        # Find registry entry to get collection name
-        registry_entry = await self.registry.find_one({
-            "$or": [{"_id": market_id}, {"condition_id": market_id}]
-        })
+        token_id = clob_token_ids[outcome_index]
+        outcome_name = outcomes[outcome_index] if outcome_index < len(outcomes) else f"Outcome {outcome_index}"
         
-        if not registry_entry:
-            return None
+        # Check cache
+        cache_key = f"{slug}:{token_id}"
+        if not force_refresh:
+            cached = await self.price_history_col.find_one({"_id": cache_key})
+            if cached and cached.get("history"):
+                history = self._filter_history(cached["history"], start_ts, end_ts)
+                return PriceHistoryResponse(
+                    slug=slug,
+                    outcome=outcome_name,
+                    outcome_index=outcome_index,
+                    token_id=token_id,
+                    history=history,
+                    total_points=len(history),
+                    cached_at=cached.get("fetched_at"),
+                )
         
-        collection_name = registry_entry["collection_name"]
+        # Fetch from CLOB API
+        api = await get_polymarket_api()
+        raw_history = await api.get_price_history(
+            token_id,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
         
-        # Get prices document
-        prices_doc = await self.db[collection_name].find_one({"_id": "prices"})
+        # Cache the history
+        now = datetime.now(timezone.utc)
+        await self.price_history_col.update_one(
+            {"_id": cache_key},
+            {
+                "$set": {
+                    "slug": slug,
+                    "token_id": token_id,
+                    "outcome_index": outcome_index,
+                    "history": raw_history,
+                    "fetched_at": now,
+                }
+            },
+            upsert=True,
+        )
         
-        if not prices_doc or not prices_doc.get("history"):
-            # Try to fetch from API
-            price_data = await self.polymarket.get_price_history(
-                market_id, start_date, end_date
-            )
-            
-            if price_data:
-                await self._cache_prices(collection_name, price_data)
-                prices_doc = {"history": price_data}
-        
-        # Filter and return
-        history = prices_doc.get("history", [])
-        
-        # Apply filters
-        filtered = history
-        if outcome:
-            filtered = [p for p in filtered if p.get("outcome") == outcome]
-        if start_date:
-            filtered = [p for p in filtered if p.get("timestamp", datetime.min) >= start_date]
-        if end_date:
-            filtered = [p for p in filtered if p.get("timestamp", datetime.max) <= end_date]
+        history = self._filter_history(raw_history, start_ts, end_ts)
         
         return PriceHistoryResponse(
-            market_id=market_id,
-            outcome=outcome,
-            prices=filtered,
-            start_date=start_date,
-            end_date=end_date,
-            total_points=len(filtered),
+            slug=slug,
+            outcome=outcome_name,
+            outcome_index=outcome_index,
+            token_id=token_id,
+            history=history,
+            total_points=len(history),
+            cached_at=now,
         )
     
-    async def search_markets(self, query: str) -> list[dict]:
+    # ==================== Open Interest ====================
+    
+    async def get_open_interest(
+        self,
+        slugs: list[str],
+        force_refresh: bool = False,
+    ) -> list[OpenInterestResponse]:
         """
-        Search markets via Polymarket API.
-        Does not cache search results.
+        Get open interest for multiple markets.
         
         Args:
-            query: Search query string
+            slugs: List of market slugs
+            force_refresh: Force fetch from API
             
         Returns:
-            List of market search results
+            List of OpenInterestResponse
         """
-        return await self.polymarket.search_markets(query)
-    
-    # ==================== Caching Methods ====================
-    
-    async def _cache_market(self, market_data: dict) -> str:
-        """Cache market data in MongoDB."""
-        slug = market_data.get("slug") or market_data.get("condition_id", "unknown")
-        
-        # Ensure collection exists and is registered
-        collection_name = await markets_db.ensure_market_collection(
-            self.db, slug, market_data
+        # Get condition IDs for the slugs
+        cursor = self.markets_col.find(
+            {"slug": {"$in": slugs}},
+            {"slug": 1, "condition_id": 1}
         )
+        slug_to_cond = {doc["slug"]: doc["condition_id"] async for doc in cursor}
         
-        # Store market info
-        info_doc = {
-            "_id": "info",
-            "slug": slug,
-            "condition_id": market_data.get("condition_id"),
-            "question": market_data.get("question"),
-            "description": market_data.get("description"),
-            "outcomes": market_data.get("outcomes", []),
-            "end_date": market_data.get("end_date"),
-            "status": market_data.get("status", "active"),
-            "resolution": market_data.get("resolution"),
-            "metadata": {k: v for k, v in market_data.items() 
-                        if k not in ["slug", "condition_id", "question", 
-                                    "description", "outcomes", "end_date",
-                                    "status", "resolution"]},
-            "first_fetched_at": datetime.now(timezone.utc),
-            "last_updated_at": datetime.now(timezone.utc),
+        condition_ids = list(slug_to_cond.values())
+        if not condition_ids:
+            return []
+        
+        # Check cache
+        results: list[OpenInterestResponse] = []
+        to_fetch: list[str] = []
+        
+        if not force_refresh:
+            async for doc in self.open_interest_col.find({"condition_id": {"$in": condition_ids}}):
+                cond_id = doc["condition_id"]
+                slug = next((s for s, c in slug_to_cond.items() if c == cond_id), None)
+                if slug:
+                    results.append(OpenInterestResponse(
+                        slug=slug,
+                        condition_id=cond_id,
+                        value=doc["value"],
+                        fetched_at=doc.get("fetched_at"),
+                    ))
+                    condition_ids.remove(cond_id)
+            
+            to_fetch = condition_ids
+        else:
+            to_fetch = condition_ids
+        
+        if to_fetch:
+            # Fetch from Data API
+            api = await get_polymarket_api()
+            oi_data = await api.get_open_interest(to_fetch)
+            
+            # Cache and add to results
+            now = datetime.now(timezone.utc)
+            for item in oi_data:
+                cond_id = item["market"]
+                value = item["value"]
+                slug = next((s for s, c in slug_to_cond.items() if c == cond_id), None)
+                
+                if slug:
+                    await self.open_interest_col.update_one(
+                        {"condition_id": cond_id},
+                        {
+                            "$set": {
+                                "slug": slug,
+                                "condition_id": cond_id,
+                                "value": value,
+                                "fetched_at": now,
+                            }
+                        },
+                        upsert=True,
+                    )
+                    
+                    results.append(OpenInterestResponse(
+                        slug=slug,
+                        condition_id=cond_id,
+                        value=value,
+                        fetched_at=now,
+                    ))
+        
+        return results
+    
+    # ==================== Bulk Operations (for Worker) ====================
+    
+    async def bulk_upsert_markets(
+        self,
+        markets: list[dict[str, Any]],
+    ) -> int:
+        """
+        Bulk upsert market metadata.
+        Used by the worker for periodic refresh.
+        
+        Args:
+            markets: List of raw market data from Gamma API
+            
+        Returns:
+            Number of markets upserted
+        """
+        if not markets:
+            return 0
+        
+        operations = []
+        now = datetime.now(timezone.utc)
+        
+        for market_data in markets:
+            market = MarketMetadata.from_gamma_response(market_data)
+            doc = market.to_mongo_doc()
+            doc["last_synced_at"] = now
+            
+            operations.append(UpdateOne(
+                {"slug": market.slug},
+                {
+                    "$set": doc,
+                    "$setOnInsert": {"first_synced_at": now},
+                },
+                upsert=True,
+            ))
+        
+        if operations:
+            result = await self.markets_col.bulk_write(operations, ordered=False)
+            return result.upserted_count + result.modified_count
+        
+        return 0
+    
+    async def get_sync_stats(self) -> dict[str, Any]:
+        """Get market sync statistics."""
+        total = await self.markets_col.count_documents({})
+        active = await self.markets_col.count_documents({"closed": False, "active": True})
+        closed = await self.markets_col.count_documents({"closed": True})
+        
+        # Get oldest and newest sync times
+        pipeline = [
+            {"$group": {
+                "_id": None,
+                "oldest_sync": {"$min": "$last_synced_at"},
+                "newest_sync": {"$max": "$last_synced_at"},
+            }}
+        ]
+        agg_result = await self.markets_col.aggregate(pipeline).to_list(1)
+        sync_times = agg_result[0] if agg_result else {}
+        
+        return {
+            "total_markets": total,
+            "active_markets": active,
+            "closed_markets": closed,
+            "oldest_sync": sync_times.get("oldest_sync"),
+            "newest_sync": sync_times.get("newest_sync"),
         }
+    
+    # ==================== Private Helpers ====================
+    
+    async def _cache_market(self, market_data: dict[str, Any]) -> None:
+        """Cache a single market to MongoDB."""
+        market = MarketMetadata.from_gamma_response(market_data)
+        doc = market.to_mongo_doc()
+        doc["last_synced_at"] = datetime.now(timezone.utc)
         
-        await self.db[collection_name].update_one(
-            {"_id": "info"},
-            {"$set": info_doc},
+        await self.markets_col.update_one(
+            {"slug": market.slug},
+            {
+                "$set": doc,
+                "$setOnInsert": {"first_synced_at": datetime.now(timezone.utc)},
+            },
             upsert=True,
         )
-        
-        return collection_name
     
-    async def _cache_prices(self, collection_name: str, price_data: list[dict]) -> None:
-        """Cache price history in MongoDB."""
-        # Append to existing history (avoid duplicates by timestamp+outcome)
-        existing = await self.db[collection_name].find_one({"_id": "prices"})
-        existing_history = existing.get("history", []) if existing else []
+    def _filter_history(
+        self,
+        history: list[dict],
+        start_ts: Optional[int],
+        end_ts: Optional[int],
+    ) -> list[dict]:
+        """Filter price history by timestamp range."""
+        if not start_ts and not end_ts:
+            return history
         
-        # Create set of existing (timestamp, outcome) for dedup
-        existing_keys = {
-            (p.get("timestamp"), p.get("outcome")) 
-            for p in existing_history
-        }
+        filtered = []
+        for point in history:
+            ts = point.get("t", 0)
+            if start_ts and ts < start_ts:
+                continue
+            if end_ts and ts > end_ts:
+                continue
+            filtered.append(point)
         
-        # Add new prices that don't exist
-        for price in price_data:
-            key = (price.get("timestamp"), price.get("outcome"))
-            if key not in existing_keys:
-                existing_history.append(price)
-        
-        # Sort by timestamp
-        existing_history.sort(key=lambda x: x.get("timestamp", datetime.min))
-        
-        await self.db[collection_name].update_one(
-            {"_id": "prices"},
-            {"$set": {"history": existing_history}},
-            upsert=True,
+        return filtered
+    
+    def _doc_to_summary(self, doc: dict) -> MarketSummary:
+        """Convert MongoDB doc to MarketSummary."""
+        return MarketSummary(
+            slug=doc.get("slug", ""),
+            question=doc.get("question", ""),
+            outcomes=doc.get("outcomes", []),
+            outcome_prices=doc.get("outcome_prices", []),
+            volume_24h=doc.get("volume_24hr"),
+            volume_total=doc.get("volume_num"),
+            liquidity=doc.get("liquidity_num"),
+            best_bid=doc.get("best_bid"),
+            best_ask=doc.get("best_ask"),
+            spread=doc.get("spread"),
+            closed=doc.get("closed", False),
+            active=doc.get("active", True),
+            end_date=doc.get("end_date_iso"),
         )
     
-    # ==================== Helper Methods ====================
-    
-    def _doc_to_response(self, info_doc: dict, registry_entry: dict) -> MarketResponse:
-        """Convert cached documents to MarketResponse."""
-        return MarketResponse(
-            slug=info_doc.get("slug") or registry_entry["_id"],
-            condition_id=info_doc.get("condition_id"),
-            question=info_doc.get("question", ""),
-            description=info_doc.get("description"),
-            outcomes=info_doc.get("outcomes", []),
-            end_date=info_doc.get("end_date"),
-            status=info_doc.get("status", "active"),
-            resolution=info_doc.get("resolution"),
-            current_prices=None,  # TODO: Get from Redis live data
-            metadata=info_doc.get("metadata", {}),
+    def _doc_to_detail_response(self, doc: dict) -> MarketDetailResponse:
+        """Convert MongoDB doc to MarketDetailResponse."""
+        return MarketDetailResponse(
+            slug=doc.get("slug", ""),
+            condition_id=doc.get("condition_id"),
+            question=doc.get("question", ""),
+            description=doc.get("description"),
+            outcomes=doc.get("outcomes", []),
+            outcome_prices=doc.get("outcome_prices", []),
+            clob_token_ids=doc.get("clob_token_ids", []),
+            volume_24h=doc.get("volume_24hr"),
+            volume_7d=doc.get("volume_7d"),
+            volume_total=doc.get("volume_num"),
+            liquidity=doc.get("liquidity_num"),
+            best_bid=doc.get("best_bid"),
+            best_ask=doc.get("best_ask"),
+            spread=doc.get("spread"),
+            closed=doc.get("closed", False),
+            active=doc.get("active", True),
+            end_date=doc.get("end_date_iso"),
+            image=doc.get("image"),
+            icon=doc.get("icon"),
+            tags=doc.get("tags", []),
+            rewards=doc.get("rewards", {}),
+            last_synced_at=doc.get("last_synced_at"),
         )
     
-    def _market_data_to_response(self, market_data: dict) -> MarketResponse:
-        """Convert API market data to MarketResponse."""
-        return MarketResponse(
-            slug=market_data.get("slug") or market_data.get("condition_id", ""),
-            condition_id=market_data.get("condition_id"),
-            question=market_data.get("question", ""),
-            description=market_data.get("description"),
-            outcomes=market_data.get("outcomes", []),
-            end_date=market_data.get("end_date"),
-            status=market_data.get("status", "active"),
-            resolution=market_data.get("resolution"),
-            current_prices=market_data.get("current_prices"),
-            metadata={k: v for k, v in market_data.items() 
-                     if k not in ["slug", "condition_id", "question", 
-                                 "description", "outcomes", "end_date",
-                                 "status", "resolution", "current_prices"]},
+    def _market_data_to_detail_response(self, data: dict) -> MarketDetailResponse:
+        """Convert raw API data to MarketDetailResponse."""
+        market = MarketMetadata.from_gamma_response(data)
+        return MarketDetailResponse(
+            slug=market.slug,
+            condition_id=market.condition_id,
+            question=market.question,
+            description=market.description,
+            outcomes=market.outcomes,
+            outcome_prices=market.outcome_prices,
+            clob_token_ids=market.clob_token_ids,
+            volume_24h=market.volume_24hr,
+            volume_7d=market.volume_7d,
+            volume_total=market.volume_num,
+            liquidity=market.liquidity_num,
+            best_bid=market.best_bid,
+            best_ask=market.best_ask,
+            spread=market.spread,
+            closed=market.closed,
+            active=market.active,
+            end_date=market.end_date_iso,
+            image=market.image,
+            icon=market.icon,
+            tags=market.tags,
+            rewards=market.rewards,
+            last_synced_at=None,
         )
