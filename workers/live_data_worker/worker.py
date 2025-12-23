@@ -16,3 +16,5 @@ POLYMARKET_PROXY_ADDRESS: str = ""
 client = ClobClient(host, key=key, chain_id=chain_id)
 
 print(client.derive_api_key())
+print('test')
+

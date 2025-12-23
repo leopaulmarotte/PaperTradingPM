@@ -23,7 +23,7 @@ services:
       - STREAMLIT_ENV=development
 
     # Streamlit redémarre automatiquement quand le code change
-    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    command: streamlit run main.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
 
     networks:
       - app_network
@@ -121,12 +121,12 @@ services:
 
 
   worker:
-    build: ./worker
+    build: ./workers/live_data_worker
     container_name: live_data_worker
     depends_on:
       - redis
     volumes:
-      - ./worker:/app
+      - ./workers/live_data_worker:/app
     environment:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
