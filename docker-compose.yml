@@ -132,21 +132,9 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - CLOB_URL=${CLOB_URL}
       - API_KEY=${API_KEY}
-    command: python worker.py
-
-  # ======================
-  # Worker Placeholder (for future workers)
-  # ======================
-  # live-data-worker:
-  #   build: ./workers/live_data_worker
-  #   container_name: live_data_worker
-  #   depends_on:
-  #     - redis
-  #   environment:
-  #     - REDIS_HOST=redis
-  #     - REDIS_PORT=6379
-  #   networks:
-  #     - app_network
+    # command: python worker.py
+    networks:
+      - app_network
 
 
 
