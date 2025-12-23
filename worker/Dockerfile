@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Commande par défaut : lance le worker
-CMD ["python", "worker.py"]
+CMD ["bash"]
