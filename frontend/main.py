@@ -1,4 +1,5 @@
 import streamlit as st
+from frontend.pages import live_stream
 from streamlit_option_menu import option_menu
 from views import login, trading, metrics, history, account, portfolio
 from config import APP_NAME
@@ -44,6 +45,6 @@ def main():
         portfolio.render()
     elif page == "Account":
         account.render()   # déjà correct
-
+  
 if __name__ == "__main__":
     main()

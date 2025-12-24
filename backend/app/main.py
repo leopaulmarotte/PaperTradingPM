@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database.connections import get_mongo_client, close_connections
 from app.database.registry import sync_registry, create_indexes
-from app.routers import auth, health, markets, portfolios, ws
+from app.routers import auth, health, markets, portfolios, ws, market_stream
 
 
 @asynccontextmanager
@@ -96,6 +96,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(markets.router)
 app.include_router(portfolios.router)
+app.include_router(market_stream.router)
 app.include_router(ws.router)
 
 

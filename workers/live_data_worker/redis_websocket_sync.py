@@ -37,6 +37,7 @@ from typing import Optional
 import certifi
 import redis
 import redis.asyncio as aioredis
+import threading
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from websocket import WebSocketApp, WebSocketException
@@ -57,7 +58,7 @@ class WorkerConfig(BaseSettings):
     # WebSocket
     ws_url: str = Field(default="wss://ws-subscriptions-clob.polymarket.com/ws/market")
     asset_ids: str = Field(
-        default="92703761682322480664976766247614127878023988651992837287050266308961660624165"
+        default="92703761682322480664976766247614127878023988651992837287050266308961660624165,48193521645113703700467246669338225849301704920590102230072263970163239985027"
     )
     
     # Redis Stream
@@ -73,8 +74,6 @@ class WorkerConfig(BaseSettings):
 
 
 config = WorkerConfig()
-
-
 # ==================== Logging Setup ====================
 
 logging.basicConfig(
@@ -178,38 +177,41 @@ class PolymarketWebSocketManager:
         self.asset_ids = [
             a.strip() for a in config.asset_ids.split(",") if a.strip()
         ]
+
+        self._control_thread: Optional[threading.Thread] = None
     
     def on_message(self, ws, message: str):
-        """Handle incoming WebSocket message."""
+        """Handle WebSocket message - simply store in Redis stream."""
         try:
-            data = json.loads(message)
+            payload = json.loads(message)
         except json.JSONDecodeError:
-            logger.debug(f"Non-JSON message: {message}")
+            logger.debug("Non-JSON message")
             return
         
-        # Skip empty or control messages
-        if not data or data.get("type") in ("ping", "pong"):
-            return
+        # Handle both list and dict payloads
+        items = payload if isinstance(payload, list) else [payload]
         
-        # Store in Redis asynchronously
-        try:
-            # Use sync client for simplicity (WebSocket callback is not async)
-            fields = {
-                "data": json.dumps(data),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+        for item in items:
+            # Skip empty messages and pings
+            if not item or (isinstance(item, dict) and item.get("type") in ("ping", "pong")):
+                continue
             
-            self.redis_manager.client.xadd(
-                config.redis_stream_key,
-                fields,
-                maxlen=config.stream_max_len,
-                approximate=True,
-            )
-            
-            logger.debug(f"Stored message: {data.get('type', 'unknown')}")
-            
-        except Exception as e:
-            logger.error(f"Error storing message in Redis: {e}")
+            try:
+                # Store message directly in Redis stream
+                entry_id = self.redis_manager.client.xadd(
+                    config.redis_stream_key,
+                    {
+                        "data": json.dumps(item),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                    maxlen=config.stream_max_len,
+                    approximate=True,
+                )
+                logger.debug(f"Added to stream: {entry_id}")
+            except Exception as e:
+                logger.error(f"Failed to add to stream: {e}")
+
+
     
     def on_error(self, ws, error):
         """Handle WebSocket error."""
@@ -276,6 +278,64 @@ class PolymarketWebSocketManager:
             except Exception as e:
                 logger.error(f"Error closing WebSocket: {e}")
 
+    def start_control_listener(self, channel: str = "live-data-control"):
+        """Start a background thread subscribing to a Redis pub/sub channel.
+
+        Expected messages are JSON with key `asset_ids` (list of ids) or
+        `assets_ids`. When received, the worker updates `self.asset_ids` and
+        sends a new subscription message to the WebSocket if connected.
+        """
+        if self._control_thread and self._control_thread.is_alive():
+            return
+
+        def _listen():
+            try:
+                pubsub = self.redis_manager.client.pubsub(ignore_subscribe_messages=True)
+                pubsub.subscribe(channel)
+                logger.info(f"Control listener subscribed to Redis channel '{channel}'")
+                for message in pubsub.listen():
+                    if message is None:
+                        continue
+                    data = message.get("data")
+                    if not data:
+                        continue
+                    try:
+                        if isinstance(data, bytes):
+                            payload = json.loads(data.decode())
+                        else:
+                            payload = json.loads(data)
+                    except Exception:
+                        logger.debug(f"Control message not JSON: {data}")
+                        continue
+
+                    asset_ids = payload.get("asset_ids") or payload.get("assets_ids")
+                    if not asset_ids:
+                        continue
+
+                    # normalize
+                    new_ids = [str(a).strip() for a in asset_ids if a]
+                    if not new_ids:
+                        continue
+
+                    self.asset_ids = new_ids
+                    logger.info(f"Control: updating asset_ids -> {self.asset_ids}")
+
+                    # send subscription update to WS if connected
+                    try:
+                        if self.ws:
+                            subscribe_msg = {"assets_ids": self.asset_ids, "type": "market"}
+                            self.ws.send(json.dumps(subscribe_msg))
+                            logger.info("Sent updated subscription to WebSocket")
+                    except Exception as e:
+                        logger.error(f"Failed to send updated subscription: {e}")
+
+            except Exception as e:
+                logger.error(f"Control listener error: {e}")
+
+        t = threading.Thread(target=_listen, daemon=True)
+        t.start()
+        self._control_thread = t
+
 
 # ==================== Main Worker ====================
 
@@ -299,6 +359,11 @@ class RedisWebSocketWorker:
         
         # Initialize async connection
         await self.redis_manager.connect()
+        # Start control listener to accept dynamic subscription updates
+        try:
+            self.ws_manager.start_control_listener()
+        except Exception:
+            logger.warning("Could not start control listener")
     
     async def cleanup(self):
         """Cleanup resources."""
