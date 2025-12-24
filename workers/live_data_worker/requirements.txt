@@ -1,5 +1,5 @@
 py_clob_client
-threading
-time
-json
-websocket
+websocket-client
+redis>=5.0.0
+certifi
+pydantic-settings>=2.0
