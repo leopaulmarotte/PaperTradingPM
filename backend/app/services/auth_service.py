@@ -203,3 +203,54 @@ class AuthService:
         
         user_doc["_id"] = str(user_doc["_id"])
         return User(**user_doc)
+    
+    async def change_password(
+        self,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+    ) -> dict:
+        """
+        Change user password after verifying current password.
+        
+        Args:
+            user_id: User ID to change password for
+            current_password: Current password (for verification)
+            new_password: New password to set
+            
+        Returns:
+            dict with message, user_id, and email
+            
+        Raises:
+            ValueError: If current password is incorrect or user not found
+        """
+        # Get user document
+        try:
+            user_doc = await self.users_collection.find_one(
+                {"_id": ObjectId(user_id)}
+            )
+        except Exception:
+            raise ValueError("Invalid user ID")
+        
+        if not user_doc:
+            raise ValueError("User not found")
+        
+        # Verify current password
+        if not verify_password(current_password, user_doc["hashed_password"]):
+            raise ValueError("Current password is incorrect")
+        
+        # Update password
+        new_hashed_password = hash_password(new_password)
+        result = await self.users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"hashed_password": new_hashed_password}},
+        )
+        
+        if result.modified_count == 0:
+            raise ValueError("Failed to update password")
+        
+        return {
+            "message": "Password changed successfully",
+            "user_id": user_id,
+            "email": user_doc["email"],
+        }

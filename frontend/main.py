@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-from views import login, trading, metrics, history, account
+from views import login, trading, metrics, history, account, portfolio
 from config import APP_NAME
 
 def init_session():
@@ -28,8 +28,8 @@ def main():
     with st.sidebar:
         page = option_menu(
         menu_title="Navigation",
-        options=["Trading", "Metrics", "History", "Account"],
-        icons=["graph-up", "bar-chart", "clock-history", "gear"],
+        options=["Trading", "Metrics", "Portfolio", "History", "Account"],
+        icons=["graph-up", "bar-chart", "wallet", "clock-history", "gear"],
         default_index=0,
     )
 
@@ -40,6 +40,8 @@ def main():
         metrics.render()
     elif page == "History":
         history.render()
+    elif page == "Portfolio":
+        portfolio.render()
     elif page == "Account":
         account.render()   # déjà correct
 

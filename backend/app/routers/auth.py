@@ -11,6 +11,8 @@ from app.database.databases import auth_db
 from app.dependencies.auth import get_current_active_user
 from app.models.user import User
 from app.schemas.auth import (
+    ChangePasswordRequest,
+    ChangePasswordResponse,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
@@ -159,3 +161,54 @@ async def get_current_user_info(
         "status": current_user.status,
         "created_at": current_user.created_at,
     }
+
+
+@router.post(
+    "/change-password",
+    response_model=ChangePasswordResponse,
+    summary="Change user password",
+)
+async def change_password(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    body: ChangePasswordRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """
+    Change the password for the currently authenticated user.
+    
+    - **current_password**: Current password (for verification)
+    - **new_password**: New password (minimum 8 characters)
+    - **new_password_confirm**: Must match new_password
+    
+    Requires valid token as query parameter: `?token=xxx`
+    """
+    # Validate new passwords match
+    if not body.new_passwords_match():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match",
+        )
+    
+    # Validate new password is different from current
+    if body.current_password == body.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password",
+        )
+    
+    try:
+        result = await auth_service.change_password(
+            user_id=current_user.id,
+            current_password=body.current_password,
+            new_password=body.new_password,
+        )
+        return ChangePasswordResponse(
+            message=result["message"],
+            user_id=result["user_id"],
+            email=result["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )

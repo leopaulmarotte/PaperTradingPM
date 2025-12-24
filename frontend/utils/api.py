@@ -22,6 +22,11 @@ class APIClient:
     def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
         """Make GET request."""
         try:
+            if params is None:
+                params = {}
+            # Add token as query param if available
+            if st.session_state.token:
+                params["token"] = st.session_state.token
             resp = requests.get(
                 f"{self.base_url}{endpoint}",
                 headers=self._headers(),
@@ -34,13 +39,19 @@ class APIClient:
         except Exception as e:
             return {"status": 0, "error": str(e)}
     
-    def _post(self, endpoint: str, data: dict) -> dict:
+    def _post(self, endpoint: str, data: dict, params: Optional[dict] = None) -> dict:
         """Make POST request."""
         try:
+            if params is None:
+                params = {}
+            # Add token as query param if available
+            if st.session_state.token:
+                params["token"] = st.session_state.token
             resp = requests.post(
                 f"{self.base_url}{endpoint}",
                 headers=self._headers(),
                 json=data,
+                params=params,
                 timeout=30,
             )
             return {"status": resp.status_code, "data": resp.json() if resp.text else None}
@@ -68,6 +79,19 @@ class APIClient:
     def get_me(self) -> dict:
         """Get current user profile."""
         return self._get("/auth/me")
+    
+    def change_password(
+        self,
+        current_password: str,
+        new_password: str,
+        new_password_confirm: str,
+    ) -> dict:
+        """Change user password."""
+        return self._post("/auth/change-password", {
+            "current_password": current_password,
+            "new_password": new_password,
+            "new_password_confirm": new_password_confirm,
+        })
     
     # Health endpoint
     def health(self) -> dict:
@@ -130,4 +154,27 @@ class APIClient:
     def get_portfolio(self, portfolio_id: str) -> dict:
         """Get portfolio details."""
         return self._get(f"/portfolios/{portfolio_id}")
+
+    def get_trades(self, portfolio_id: str, page: int = 1, page_size: int = 50) -> dict:
+        """Get trade history for a portfolio."""
+        return self._get(f"/portfolios/{portfolio_id}/trades", {"page": page, "page_size": page_size})
+    
+    def delete_portfolio(self, portfolio_id: str) -> dict:
+        """Delete a portfolio."""
+        try:
+            if st.session_state.token:
+                params = {"token": st.session_state.token}
+            else:
+                params = {}
+            resp = requests.delete(
+                f"{self.base_url}/portfolios/{portfolio_id}",
+                headers=self._headers(),
+                params=params,
+                timeout=30,
+            )
+            return {"status": resp.status_code, "data": resp.json() if resp.text else None}
+        except requests.exceptions.ConnectionError:
+            return {"status": 0, "error": "Cannot connect to backend"}
+        except Exception as e:
+            return {"status": 0, "error": str(e)}
 

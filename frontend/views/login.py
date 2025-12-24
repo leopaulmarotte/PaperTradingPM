@@ -13,8 +13,8 @@ def render():
     with tab1:
         st.subheader("Login")
         with st.form("login_form"):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
+            email = st.text_input("Email", value="florian.lava@ensae.fr")
+            password = st.text_input("Password", type="password", value="bbbbbbbb")
             submitted = st.form_submit_button("Login")
             
             if submitted:

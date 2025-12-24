@@ -76,3 +76,35 @@ class UserInfoResponse(BaseModel):
     roles: list[UserRole] = Field(..., description="User roles")
     status: UserStatus = Field(..., description="Account status")
     created_at: datetime = Field(..., description="Account creation timestamp")
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password request body."""
+    current_password: str = Field(
+        ...,
+        min_length=8,
+        description="Current password for verification"
+    )
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        description="New password (min 8 characters)"
+    )
+    new_password_confirm: str = Field(
+        ...,
+        description="New password confirmation"
+    )
+
+    def new_passwords_match(self) -> bool:
+        """Check if new password and confirmation match."""
+        return self.new_password == self.new_password_confirm
+
+
+class ChangePasswordResponse(BaseModel):
+    """Change password response."""
+    message: str = Field(
+        default="Password changed successfully",
+        description="Success message"
+    )
+    user_id: str = Field(..., description="User ID")
+    email: str = Field(..., description="User email")
