@@ -236,20 +236,59 @@ class MarketService:
         Returns:
             PriceHistoryResponse or None
         """
-        # Get market to find token ID
+        # Get market to find token ID - first try cache, then API
         market_doc = await self.markets_col.find_one({"slug": slug})
-        if not market_doc:
-            # Try to lazy-load market first
-            market = await self.get_market_by_slug(slug)
-            if not market:
+        
+        clob_token_ids = []
+        outcomes = []
+        
+        if market_doc:
+            clob_token_ids = market_doc.get("clob_token_ids", [])
+            outcomes = market_doc.get("outcomes", [])
+        
+        # If no token IDs in cache, fetch market from API directly
+        if not clob_token_ids:
+            api = await get_polymarket_api()
+            market_data = await api.get_market_by_slug(slug)
+            if not market_data:
                 return None
-            market_doc = await self.markets_col.find_one({"slug": slug})
+            
+            # Extract clob_token_ids from API response
+            raw_token_ids = market_data.get("clobTokenIds", "[]")
+            if isinstance(raw_token_ids, str):
+                import json
+                try:
+                    clob_token_ids = json.loads(raw_token_ids) if raw_token_ids else []
+                except json.JSONDecodeError:
+                    clob_token_ids = eval(raw_token_ids) if raw_token_ids else []
+            else:
+                clob_token_ids = raw_token_ids or []
+            
+            raw_outcomes = market_data.get("outcomes", "[]")
+            if isinstance(raw_outcomes, str):
+                import json
+                try:
+                    outcomes = json.loads(raw_outcomes) if raw_outcomes else []
+                except json.JSONDecodeError:
+                    outcomes = eval(raw_outcomes) if raw_outcomes else []
+            else:
+                outcomes = raw_outcomes or []
+            
+            # Cache the market for future use
+            await self._cache_market(market_data)
         
-        clob_token_ids = market_doc.get("clob_token_ids", [])
-        outcomes = market_doc.get("outcomes", [])
-        
-        if outcome_index >= len(clob_token_ids):
-            return None
+        # If no token IDs available, return empty history
+        if not clob_token_ids or outcome_index >= len(clob_token_ids):
+            outcome_name = outcomes[outcome_index] if outcome_index < len(outcomes) else f"Outcome {outcome_index}"
+            return PriceHistoryResponse(
+                slug=slug,
+                outcome=outcome_name,
+                outcome_index=outcome_index,
+                token_id="",
+                history=[],
+                total_points=0,
+                cached_at=None,
+            )
         
         token_id = clob_token_ids[outcome_index]
         outcome_name = outcomes[outcome_index] if outcome_index < len(outcomes) else f"Outcome {outcome_index}"
@@ -272,11 +311,25 @@ class MarketService:
         
         # Fetch from CLOB API
         api = await get_polymarket_api()
-        raw_history = await api.get_price_history(
-            token_id,
-            start_ts=start_ts,
-            end_ts=end_ts,
-        )
+        try:
+            raw_history = await api.get_price_history(
+                token_id,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            )
+        except Exception as e:
+            # Log error and return empty history if API fails
+            import logging
+            logging.warning(f"Failed to fetch price history for {slug}: {e}")
+            return PriceHistoryResponse(
+                slug=slug,
+                outcome=outcome_name,
+                outcome_index=outcome_index,
+                token_id=token_id,
+                history=[],
+                total_points=0,
+                cached_at=None,
+            )
         
         # Cache the history
         now = datetime.now(timezone.utc)

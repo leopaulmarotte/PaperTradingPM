@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 from views import login, trading, metrics, history, account, portfolio
+from utils.styles import inject_styles
 from config import APP_NAME
 
 def init_session():
@@ -19,6 +20,7 @@ def init_session():
 
 def main():
     st.set_page_config(page_title=APP_NAME, layout="wide")
+    inject_styles()  # Apply dark theme CSS
     init_session()
 
     # --- Contrôle d'accès
@@ -26,37 +28,49 @@ def main():
         login.render()  # <-- utiliser render(), pas show()
         st.stop()       # <-- stoppe le reste du script
 
+    # --- Handle programmatic navigation (from buttons like "Voir Performance")
+    nav_override = st.session_state.get("nav_override")
+    if nav_override:
+        st.session_state["nav_page"] = nav_override
+        st.session_state["nav_override"] = None
+        # Increment nav_key to force widget recreation
+        st.session_state["nav_key"] = st.session_state.get("nav_key", 0) + 1
+        st.rerun()
+
     # --- Sidebar navigation
     with st.sidebar:
-        # Allow programmatic navigation via session_state
         nav_options = ["Trading", "Metrics", "Portfolio", "History", "Account"]
-        # If a nav_override is present, use it for default selection and remount widget with a different key
-        nav_override = st.session_state.get("nav_override")
-        default_page = nav_override or st.session_state.get("nav_page", "Trading")
+        
+        current_page = st.session_state.get("nav_page", "Trading")
         try:
-            default_index = nav_options.index(default_page)
+            default_index = nav_options.index(current_page)
         except ValueError:
             default_index = 0
 
-        menu_key = "main_nav" if not nav_override else f"main_nav_{default_page}"
-
+        # Use dynamic key to force widget recreation when needed
+        nav_key = f"main_nav_{st.session_state.get('nav_key', 0)}"
+        
         page_selected = option_menu(
             menu_title="Navigation",
             options=nav_options,
             icons=["graph-up", "bar-chart", "wallet", "clock-history", "gear"],
             default_index=default_index,
-            key=menu_key,
+            key=nav_key,
         )
+        
+        # Only update nav_page if user explicitly clicked a DIFFERENT menu item
+        if page_selected != current_page:
+            st.session_state["nav_page"] = page_selected
+            # Also reset trading view when navigating away from Trading
+            if page_selected != "Trading":
+                st.session_state["trading_view"] = "list"
+                st.session_state["selected_market"] = None
+                for key in ["prefill_action", "prefill_outcome", "prefill_max_qty", "prefill_use_max", "prefill_portfolio_id"]:
+                    st.session_state.pop(key, None)
+            st.rerun()
 
-    # Use override if present, else take the user's selection
-    if st.session_state.get("nav_override"):
-        page = st.session_state["nav_override"]
-        st.session_state["nav_override"] = None
-    else:
-        page = page_selected
-
-    # Persist current navigation selection
-    st.session_state["nav_page"] = page
+    # Use current nav_page for routing (NOT the menu selection)
+    page = st.session_state.get("nav_page", "Trading")
 
     # --- Routing
     if page == "Trading":

@@ -49,7 +49,7 @@ def render():
                 balance = p.get("cash_balance") or p.get("initial_balance", 0)
                 pid = p.get("_id") or p.get("id")
                 with st.container():
-                    col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+                    col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
                     with col1:
                         st.markdown(f"**{name}**")
                         st.caption(f"ID: {pid}")
@@ -68,6 +68,11 @@ def render():
                                 st.session_state.selected_portfolio_id = pid
                             st.rerun()
                     with col4:
+                        if st.button("📈", key=f"metrics_{pid}", use_container_width=True, help="Voir la performance"):
+                            st.session_state["metrics_portfolio_id"] = pid
+                            st.session_state["nav_override"] = "Metrics"
+                            st.rerun()
+                    with col5:
                         if st.button("🗑️", key=f"delete_{pid}", use_container_width=True, help="Supprimer ce portfolio"):
                             del_resp = api.delete_portfolio(pid)
                             if del_resp.get("status") in (200, 204):
@@ -103,6 +108,9 @@ def render():
                             trades = []
 
                         if trades:
+                            # Sort trades by date (oldest first) for correct cost basis calculation
+                            trades = sorted(trades, key=lambda t: t.get("created_at") or t.get("timestamp") or "")
+                            
                             positions = {}
                             for t in trades:
                                 if not isinstance(t, dict):
@@ -114,94 +122,265 @@ def render():
                                 price = t.get("price", 0) or 0
                                 key = (market, outcome)
                                 if key not in positions:
-                                    positions[key] = {"qty": 0.0, "notional": 0.0, "count": 0}
+                                    positions[key] = {"qty": 0.0, "notional": 0.0, "count": 0, "cost": 0.0}
+                                
+                                # Track cost basis BEFORE updating quantity
+                                if side == "buy":
+                                    positions[key]["cost"] += qty * price
+                                else:
+                                    # Reduce cost proportionally when selling
+                                    # Calculate average cost per unit before this sale
+                                    current_qty = positions[key]["qty"]
+                                    current_cost = positions[key]["cost"]
+                                    if current_qty > 0:
+                                        avg_cost_per_unit = current_cost / current_qty
+                                        positions[key]["cost"] -= qty * avg_cost_per_unit
+                                        # Ensure cost doesn't go negative
+                                        if positions[key]["cost"] < 0:
+                                            positions[key]["cost"] = 0
+                                
+                                # Now update quantity
                                 delta = qty if side == "buy" else -qty
                                 positions[key]["qty"] += delta
                                 positions[key]["notional"] += price * qty * (1 if side == "buy" else -1)
                                 positions[key]["count"] += 1
 
-                            st.subheader("Composition du portfolio")
+                            st.subheader("📊 Composition du portfolio")
+                            
+                            # Prepare positions data with current prices
+                            positions_data = []
                             total_exposure = 0.0
-                            has_positions = False
+                            total_cost = 0.0
+                            
                             for (market, outcome), agg in positions.items():
                                 qty = agg["qty"]
-                                # Skip positions with zero quantity
                                 if qty == 0:
                                     continue
+                                    
                                 avg_price = 0 if qty == 0 else agg["notional"] / (agg["qty"] if agg["qty"] else 1)
-                                exposure = qty * avg_price if qty and avg_price else 0
-                                total_exposure += exposure
-                                has_positions = True
-
-                                cols = st.columns([3, 2, 2, 2, 1.5, 1.5])
-                                with cols[0]:
-                                    st.write(f"Marché: {market}")
-                                    st.caption(f"Issue: {outcome}")
-                                with cols[1]:
-                                    st.metric("Quantité nette", f"{qty:.4f}")
-                                with cols[2]:
-                                    st.metric("Prix moyen", f"{avg_price:.4f}")
-                                with cols[3]:
-                                    st.metric("Exposition", f"${exposure:,.2f}")
-                                with cols[4]:
-                                    sell_disabled = qty <= 0
-                                    if st.button("Modifier", key=f"modify_{pid}_{market}_{outcome}", disabled=sell_disabled, use_container_width=True):
-                                        # Navigate to Trading page and open market detail prefilled (edit the position)
-                                        st.session_state["nav_page"] = "Trading"
-                                        st.session_state["nav_override"] = "Trading"
-                                        st.session_state["selected_market"] = market
-                                        st.session_state["trading_view"] = "detail"
-                                        st.session_state["prefill_action"] = "SELL"
-                                        st.session_state["prefill_outcome"] = outcome
-                                        st.session_state["prefill_max_qty"] = float(qty)
-                                        st.session_state["prefill_portfolio_id"] = pid
-                                        st.rerun()
-                                with cols[5]:
-                                    liquidate_disabled = qty <= 0
-                                    if st.button("Liquider", key=f"liquidate_{pid}_{market}_{outcome}", disabled=liquidate_disabled, use_container_width=True):
-                                        # Execute immediate liquidation: create SELL trade for full quantity
-                                        with st.spinner("Liquidation en cours..."):
-                                            # Resolve market details to get outcome price
-                                            sell_price = 0.5
-                                            market_resp = api.get_market(market)
-                                            if not (isinstance(market_resp, dict) and market_resp.get("status") == 200):
-                                                # Try by condition id
-                                                market_resp = api.get_market_by_condition(market)
-                                            if isinstance(market_resp, dict) and market_resp.get("status") == 200:
-                                                mdata = market_resp.get("data", {})
-                                                outcomes = mdata.get("outcomes") or []
-                                                prices = mdata.get("outcome_prices") or []
-                                                # Match outcome by case-insensitive comparison
-                                                norm_out = (outcome or "").strip().lower()
-                                                found_idx = None
-                                                for i, o in enumerate(outcomes):
-                                                    if (o or "").strip().lower() == norm_out:
-                                                        found_idx = i
-                                                        break
-                                                if found_idx is not None and found_idx < len(prices):
-                                                    try:
-                                                        sell_price = float(prices[found_idx])
-                                                    except Exception:
-                                                        sell_price = 0.5
-                                            # Create trade
-                                            resp_trade = api.create_trade(
-                                                portfolio_id=pid,
-                                                market_id=market,
-                                                outcome=outcome,
-                                                side="sell",
-                                                quantity=float(qty),
-                                                price=float(sell_price),
-                                                notes="Liquidation automatique",
-                                            )
-                                            if resp_trade.get("status") in (200, 201):
-                                                st.success("Position liquidée avec succès")
-                                                st.rerun()
-                                            else:
-                                                detail = resp_trade.get("data", {}).get("detail") if isinstance(resp_trade.get("data"), dict) else resp_trade.get("error")
-                                                st.error(detail or "Échec de la liquidation")
-
-                            if has_positions:
-                                st.caption(f"Exposition totale estimée: {total_exposure:,.2f}")
+                                cost_basis = agg.get("cost", 0)
+                                
+                                # Get current market price
+                                current_price = avg_price
+                                market_resp = api.get_market(market)
+                                if not (isinstance(market_resp, dict) and market_resp.get("status") == 200):
+                                    market_resp = api.get_market_by_condition(market)
+                                if isinstance(market_resp, dict) and market_resp.get("status") == 200:
+                                    mdata = market_resp.get("data", {})
+                                    outcomes_list = mdata.get("outcomes") or []
+                                    prices = mdata.get("outcome_prices") or []
+                                    norm_out = (outcome or "").strip().lower()
+                                    for i, o in enumerate(outcomes_list):
+                                        if (o or "").strip().lower() == norm_out and i < len(prices):
+                                            try:
+                                                current_price = float(prices[i])
+                                            except Exception:
+                                                pass
+                                            break
+                                
+                                current_value = qty * current_price
+                                total_exposure += current_value
+                                total_cost += cost_basis
+                                
+                                # Performance
+                                if cost_basis > 0:
+                                    performance = ((current_value - cost_basis) / cost_basis) * 100
+                                else:
+                                    performance = 0
+                                
+                                positions_data.append({
+                                    "market": market,
+                                    "outcome": outcome,
+                                    "qty": qty,
+                                    "current_price": current_price,
+                                    "cost_basis": cost_basis,
+                                    "current_value": current_value,
+                                    "performance": performance,
+                                })
+                            
+                            if positions_data:
+                                # CSS for position cards
+                                st.markdown("""
+                                <style>
+                                .position-card {
+                                    background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+                                    border-radius: 12px;
+                                    padding: 20px;
+                                    margin-bottom: 15px;
+                                    border-left: 4px solid #6366f1;
+                                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+                                }
+                                .position-header {
+                                    display: flex;
+                                    justify-content: space-between;
+                                    align-items: flex-start;
+                                    margin-bottom: 15px;
+                                }
+                                .position-market {
+                                    font-size: 14px;
+                                    font-weight: 600;
+                                    color: #e0e0e0;
+                                    max-width: 300px;
+                                    word-wrap: break-word;
+                                }
+                                .position-outcome {
+                                    display: inline-block;
+                                    background: #6366f1;
+                                    color: white;
+                                    padding: 4px 12px;
+                                    border-radius: 20px;
+                                    font-size: 12px;
+                                    font-weight: 500;
+                                }
+                                .position-metrics {
+                                    display: grid;
+                                    grid-template-columns: repeat(5, 1fr);
+                                    gap: 15px;
+                                }
+                                .metric-box {
+                                    text-align: center;
+                                    padding: 10px;
+                                    background: rgba(255,255,255,0.05);
+                                    border-radius: 8px;
+                                }
+                                .metric-label {
+                                    font-size: 11px;
+                                    color: #888;
+                                    text-transform: uppercase;
+                                    letter-spacing: 0.5px;
+                                }
+                                .metric-value {
+                                    font-size: 18px;
+                                    font-weight: 700;
+                                    color: #fff;
+                                    margin-top: 4px;
+                                }
+                                .perf-positive { color: #22c55e !important; }
+                                .perf-negative { color: #ef4444 !important; }
+                                .portfolio-summary {
+                                    display: flex;
+                                    gap: 20px;
+                                    margin-top: 20px;
+                                }
+                                .summary-card {
+                                    flex: 1;
+                                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                                    border-radius: 10px;
+                                    padding: 15px 25px;
+                                    text-align: center;
+                                }
+                                .summary-card.perf-positive-bg {
+                                    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+                                }
+                                .summary-card.perf-negative-bg {
+                                    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+                                }
+                                .summary-label {
+                                    font-size: 12px;
+                                    color: rgba(255,255,255,0.8);
+                                    text-transform: uppercase;
+                                }
+                                .summary-value {
+                                    font-size: 28px;
+                                    font-weight: 700;
+                                    color: white;
+                                }
+                                </style>
+                                """, unsafe_allow_html=True)
+                                
+                                for pos in positions_data:
+                                    perf_class = "perf-positive" if pos["performance"] >= 0 else "perf-negative"
+                                    perf_sign = "+" if pos["performance"] >= 0 else ""
+                                    
+                                    st.markdown(f"""
+                                    <div class="position-card">
+                                        <div class="position-header">
+                                            <div class="position-market">{pos["market"]}</div>
+                                            <span class="position-outcome">{pos["outcome"]}</span>
+                                        </div>
+                                        <div class="position-metrics">
+                                            <div class="metric-box">
+                                                <div class="metric-label">Quantité</div>
+                                                <div class="metric-value">{pos["qty"]:.2f}</div>
+                                            </div>
+                                            <div class="metric-box">
+                                                <div class="metric-label">Prix Actuel</div>
+                                                <div class="metric-value">${pos["current_price"]:.4f}</div>
+                                            </div>
+                                            <div class="metric-box">
+                                                <div class="metric-label">Coût</div>
+                                                <div class="metric-value">${pos["cost_basis"]:.2f}</div>
+                                            </div>
+                                            <div class="metric-box">
+                                                <div class="metric-label">Valeur</div>
+                                                <div class="metric-value">${pos["current_value"]:.2f}</div>
+                                            </div>
+                                            <div class="metric-box">
+                                                <div class="metric-label">Performance</div>
+                                                <div class="metric-value {perf_class}">{perf_sign}{pos["performance"]:.1f}%</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    # Buttons row
+                                    btn_col1, btn_col2, btn_spacer = st.columns([1, 1, 4])
+                                    with btn_col1:
+                                        if st.button("✏️ Modifier", key=f"modify_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
+                                            st.session_state["nav_page"] = "Trading"
+                                            st.session_state["nav_override"] = "Trading"
+                                            st.session_state["selected_market"] = pos["market"]
+                                            st.session_state["trading_view"] = "detail"
+                                            st.session_state["prefill_action"] = "SELL"
+                                            st.session_state["prefill_outcome"] = pos["outcome"]
+                                            st.session_state["prefill_max_qty"] = float(pos["qty"])
+                                            st.session_state["prefill_portfolio_id"] = pid
+                                            st.rerun()
+                                    with btn_col2:
+                                        if st.button("🔥 Liquider", key=f"liquidate_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
+                                            with st.spinner("Liquidation en cours..."):
+                                                sell_price = pos["current_price"]
+                                                resp_trade = api.create_trade(
+                                                    portfolio_id=pid,
+                                                    market_id=pos["market"],
+                                                    outcome=pos["outcome"],
+                                                    side="sell",
+                                                    quantity=float(pos["qty"]),
+                                                    price=float(sell_price),
+                                                    notes="Liquidation automatique",
+                                                )
+                                                if resp_trade.get("status") in (200, 201):
+                                                    st.success("Position liquidée avec succès")
+                                                    st.rerun()
+                                                else:
+                                                    detail = resp_trade.get("data", {}).get("detail") if isinstance(resp_trade.get("data"), dict) else resp_trade.get("error")
+                                                    st.error(detail or "Échec de la liquidation")
+                                    
+                                    st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+                                
+                                # Calculate global performance
+                                if total_cost > 0:
+                                    global_perf = ((total_exposure - total_cost) / total_cost) * 100
+                                    perf_sign = "+" if global_perf >= 0 else ""
+                                    perf_class = "perf-positive-bg" if global_perf >= 0 else "perf-negative-bg"
+                                else:
+                                    global_perf = 0
+                                    perf_sign = ""
+                                    perf_class = ""
+                                
+                                # Portfolio summary with exposure and performance
+                                st.markdown(f"""
+                                <div class="portfolio-summary">
+                                    <div class="summary-card">
+                                        <div class="summary-label">Exposition Totale</div>
+                                        <div class="summary-value">${total_exposure:,.2f}</div>
+                                    </div>
+                                    <div class="summary-card {perf_class}">
+                                        <div class="summary-label">Performance Globale</div>
+                                        <div class="summary-value">{perf_sign}{global_perf:.1f}%</div>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
                             else:
                                 st.info("Pas encore de positions.")
                         else:

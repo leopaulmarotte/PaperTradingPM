@@ -247,14 +247,14 @@ def render():
 			col_config = {
 				"Date": st.column_config.TextColumn(width="small"),
 				"Heure": st.column_config.TextColumn(width="small"),
-				"Portefeuille": st.column_config.TextColumn(),
-				"Marché": st.column_config.TextColumn(),
+				"Portefeuille": st.column_config.TextColumn(width="small"),
+				"Marché": st.column_config.TextColumn(width="medium"),
 				"Action": st.column_config.TextColumn(width="small"),
 				"Token": st.column_config.TextColumn(width="small"),
-				"Quantité": st.column_config.NumberColumn(format="%.4f"),
-				"Prix unitaire": st.column_config.NumberColumn(format="%.4f"),
-				"Prix total": st.column_config.NumberColumn(format="$%.2f"),
-				"Note": st.column_config.TextColumn(),
+				"Quantité": st.column_config.NumberColumn(format="%.2f", width="small"),
+				"Prix unitaire": st.column_config.NumberColumn(format="%.4f", width="small"),
+				"Prix total": st.column_config.NumberColumn(format="$%.2f", width="small"),
+				"Note": st.column_config.TextColumn(width="medium"),
 			}
 			
 			st.dataframe(
@@ -262,6 +262,7 @@ def render():
 				use_container_width=True,
 				hide_index=True,
 				column_config=col_config,
+				height=500,
 			)
 			
 			# Export option

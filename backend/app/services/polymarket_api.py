@@ -212,8 +212,14 @@ class PolymarketAPI:
             params["startTs"] = start_ts
         if end_ts:
             params["endTs"] = end_ts
+        
+        # CLOB API requires time component: either interval or startTs/endTs
+        # Default to "max" if no time filters are provided
         if interval:
             params["interval"] = interval
+        elif not start_ts and not end_ts:
+            params["interval"] = "max"
+            
         if fidelity:
             params["fidelity"] = fidelity
         

@@ -137,6 +137,48 @@ async def get_sync_stats(
 
 # ==================== Single Market Endpoints ====================
 
+# NOTE: Price history route MUST come before the slug route
+# because {slug:path} would otherwise capture "slug/prices" as the slug
+
+
+@router.get(
+    "/by-slug/{slug:path}/prices",
+    response_model=PriceHistoryResponse,
+    summary="Get price history by slug",
+)
+async def get_price_history(
+    slug: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    market_service: MarketService = Depends(get_market_service),
+    outcome_index: int = Query(0, ge=0, le=10, description="Outcome index (0=first, 1=second)"),
+    start_ts: Optional[int] = Query(None, description="Start Unix timestamp"),
+    end_ts: Optional[int] = Query(None, description="End Unix timestamp"),
+    force_refresh: bool = Query(False, description="Force fetch from CLOB API"),
+):
+    """
+    Get price history for a market outcome.
+    
+    Lazy-loads from CLOB API if not cached.
+    
+    - **outcome_index**: 0 for first outcome (e.g., "Yes"), 1 for second (e.g., "No")
+    - **start_ts/end_ts**: Unix timestamps for time range filter
+    """
+    prices = await market_service.get_price_history(
+        slug=slug,
+        outcome_index=outcome_index,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        force_refresh=force_refresh,
+    )
+    
+    if not prices:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Market '{slug}' not found or no price history available",
+        )
+    
+    return prices
+
 
 @router.get(
     "/by-slug/{slug:path}",
@@ -193,48 +235,6 @@ async def get_market_by_condition_id(
         )
     
     return market
-
-
-# ==================== Price History Endpoints ====================
-
-
-@router.get(
-    "/by-slug/{slug:path}/prices",
-    response_model=PriceHistoryResponse,
-    summary="Get price history by slug",
-)
-async def get_price_history(
-    slug: str,
-    current_user: Annotated[User, Depends(get_current_active_user)],
-    market_service: MarketService = Depends(get_market_service),
-    outcome_index: int = Query(0, ge=0, le=10, description="Outcome index (0=first, 1=second)"),
-    start_ts: Optional[int] = Query(None, description="Start Unix timestamp"),
-    end_ts: Optional[int] = Query(None, description="End Unix timestamp"),
-    force_refresh: bool = Query(False, description="Force fetch from CLOB API"),
-):
-    """
-    Get price history for a market outcome.
-    
-    Lazy-loads from CLOB API if not cached.
-    
-    - **outcome_index**: 0 for first outcome (e.g., "Yes"), 1 for second (e.g., "No")
-    - **start_ts/end_ts**: Unix timestamps for time range filter
-    """
-    prices = await market_service.get_price_history(
-        slug=slug,
-        outcome_index=outcome_index,
-        start_ts=start_ts,
-        end_ts=end_ts,
-        force_refresh=force_refresh,
-    )
-    
-    if not prices:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Market '{slug}' not found or no price history available",
-        )
-    
-    return prices
 
 
 # ==================== Open Interest Endpoints ====================

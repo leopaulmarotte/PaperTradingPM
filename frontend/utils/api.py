@@ -174,6 +174,10 @@ class APIClient:
         """Get portfolio details."""
         return self._get(f"/portfolios/{portfolio_id}")
 
+    def get_portfolio_metrics(self, portfolio_id: str) -> dict:
+        """Get portfolio performance metrics."""
+        return self._get(f"/portfolios/{portfolio_id}/metrics")
+
     def get_trades(self, portfolio_id: str, page: int = 1, page_size: int = 50) -> dict:
         """Get trade history for a portfolio."""
         return self._get(f"/portfolios/{portfolio_id}/trades", {"page": page, "page_size": page_size})
