@@ -24,17 +24,61 @@ class JSONStorageManager:
         self.redis_key = redis_key
         self.lock = threading.Lock()
         if not self.redis_client.exists(redis_key):
-            self.redis_client.set(redis_key, json.dumps([]))
+            self.redis_client.set(redis_key, json.dumps({}))
 
-    def add_message(self, message: dict):
+    def update_orderbook(self, message: dict):
+        """
+        Update the orderbook for relevant asset_ids.
+        Handles full snapshot (bids/asks) or incremental price_changes.
+        """
         with self.lock:
-            data = json.loads(self.redis_client.get(self.redis_key) or "[]")
-            data.append({"timestamp": datetime.now(timezone.utc).isoformat(), "message": message})
+            # Load current orderbook
+            data = json.loads(self.redis_client.get(self.redis_key) or "{}")
+
+            # Full snapshot: contains bids/asks
+            if "bids" in message or "asks" in message:
+                asset_id = message.get("asset_id")
+                if asset_id:
+                    data[asset_id] = {
+                        "bids": {str(bid["price"]): str(bid["size"]) for bid in message.get("bids", []) if "price" in bid and "size" in bid},
+                        "asks": {str(ask["price"]): str(ask["size"]) for ask in message.get("asks", []) if "price" in ask and "size" in ask}
+                    }
+
+            # Incremental updates: price_changes
+            elif "price_changes" in message:
+                for change in message["price_changes"]:
+                    asset_id = change.get("asset_id")
+                    if not asset_id:
+                        continue
+
+                    # Ensure asset exists
+                    if asset_id not in data:
+                        data[asset_id] = {"bids": {}, "asks": {}}
+
+                    side = change.get("side", "").upper()
+                    price = str(change.get("price"))
+                    size = str(change.get("size"))
+
+                    # Map side to bids/asks
+                    if side == "BUY":
+                        data[asset_id]["bids"][price] = size
+                    elif side == "SELL":
+                        data[asset_id]["asks"][price] = size
+
+            # Save updated orderbook
             self.redis_client.set(self.redis_key, json.dumps(data))
 
     def clear(self):
+        """Clear the JSON orderbook."""
         with self.lock:
-            self.redis_client.set(self.redis_key, json.dumps([]))
+            self.redis_client.set(self.redis_key, json.dumps({}))
+
+
+
+
+
+
+
 
 # ---------------- WebSocket Manager ----------------
 class PolymarketWebSocketManager:
@@ -46,24 +90,57 @@ class PolymarketWebSocketManager:
         self.paused = False
         self._control_thread: threading.Thread | None = None
 
+    # def on_message(self, ws, message: str):
+    #     try:
+    #         payload = json.loads(message)
+    #     except:
+    #         return
+    #     items = payload if isinstance(payload, list) else [payload]
+    #     for item in items:
+    #         if not item or item.get("type") in ("ping", "pong"):
+    #             continue
+    #         try:
+    #             self.redis_client.xadd(
+    #                 REDIS_STREAM_KEY,
+    #                 {"data": json.dumps(item), "timestamp": datetime.now(timezone.utc).isoformat()},
+    #                 maxlen=STREAM_MAX_LEN, approximate=True
+    #             )
+    #             self.json_manager.add_message(item)
+    #         except Exception as e:
+    #             logger.error(f"Failed to store message: {e}")
+
+
+
+
+
     def on_message(self, ws, message: str):
         try:
             payload = json.loads(message)
         except:
             return
+
         items = payload if isinstance(payload, list) else [payload]
         for item in items:
             if not item or item.get("type") in ("ping", "pong"):
                 continue
+
             try:
+                # Store in Redis Stream (historique limité)
                 self.redis_client.xadd(
                     REDIS_STREAM_KEY,
                     {"data": json.dumps(item), "timestamp": datetime.now(timezone.utc).isoformat()},
                     maxlen=STREAM_MAX_LEN, approximate=True
                 )
-                self.json_manager.add_message(item)
+                # Update JSON snapshot orderbook
+                self.json_manager.update_orderbook(item)
             except Exception as e:
-                logger.error(f"Failed to store message: {e}")
+                logger.error(f"Failed to store/update message: {e}")
+
+
+
+
+
+
 
     def on_open(self, ws):
         if self.asset_ids:

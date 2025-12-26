@@ -3,6 +3,10 @@ import os
 import json
 import redis
 
+
+from app.services.redis_stream_service import MarketMessageTransformer
+
+
 router = APIRouter(prefix="/market-stream", tags=["Market Stream"])
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
@@ -21,7 +25,7 @@ async def start_stream(asset_id: str = Query(..., description="Asset ID to strea
         # Clear pause flag
         _redis_client.delete(REDIS_PAUSE_KEY)
         # Publish asset_ids to control channel
-        _redis_pub.publish("live-data-control", json.dumps({"asset_ids": [asset_id]}))
+        _redis_pub.publish("live-data-control", json.dumps({"asset_ids": asset_id.split(',')}))
         return {
             "status": "started",
             "asset_id": asset_id,
@@ -64,3 +68,27 @@ async def get_latest_message():
         return {"status": "no_data", "message": None}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+from app.services.redis_stream_service import MarketMessageTransformer
+
+
+# @router.get("/messages-test")
+# async def get_messages():
+#     try:
+#         data = _redis_client.get(REDIS_JSON_KEY)
+#         messages = json.loads(data) if data else []
+
+#         messages = MarketMessageTransformer.normalize_messages(messages)
+
+#         return {
+#             "status": "ok",
+#             "count": len(messages),
+#             "messages": messages,
+#         }
+
+#     except Exception as e:
+#         return {
+#             "status": "error",
+#             "message": str(e),
+#             "messages": [],
+#         }
