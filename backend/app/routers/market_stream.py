@@ -4,7 +4,7 @@ import json
 import redis
 
 
-from app.services.redis_stream_service import MarketMessageTransformer
+# from app.services.redis_stream_service import MarketMessageTransformer
 
 
 router = APIRouter(prefix="/market-stream", tags=["Market Stream"])
@@ -69,7 +69,7 @@ async def get_latest_message():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-from app.services.redis_stream_service import MarketMessageTransformer
+# from app.services.redis_stream_service import MarketMessageTransformer
 
 
 # @router.get("/messages-test")
