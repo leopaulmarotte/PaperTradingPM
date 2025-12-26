@@ -62,6 +62,75 @@ class RedisStreamService:
         except Exception as e:
             raise RuntimeError(f"Failed to read from Redis stream: {e}")
     
+    def get_messages_by_asset(self, asset_id: str, count: int = 50) -> list[dict[str, Any]]:
+        """
+        Get messages filtered by asset_id.
+        
+        Args:
+            asset_id: Asset ID to filter by
+            count: Maximum messages to retrieve before filtering
+            
+        Returns:
+            List of messages containing the specified asset_id
+        """
+        try:
+            # Get more messages than needed since we'll filter
+            fetch_count = min(count * 5, 1000)
+            messages = self.redis_client.xrevrange(
+                self.stream_key,
+                count=fetch_count,
+            )
+            
+            result = []
+            for entry_id, fields in messages:
+                try:
+                    data = json.loads(fields.get("data", "{}"))
+                    timestamp = fields.get("timestamp", "")
+                    
+                    # Check if this message contains the asset_id
+                    if self._message_contains_asset(data, asset_id):
+                        result.append({
+                            "id": entry_id,
+                            "timestamp": timestamp,
+                            "data": data,
+                        })
+                    
+                    # Stop if we have enough messages
+                    if len(result) >= count:
+                        break
+                        
+                except (json.JSONDecodeError, ValueError):
+                    continue
+            
+            return result
+        except Exception as e:
+            raise RuntimeError(f"Failed to read from Redis stream: {e}")
+    
+    @staticmethod
+    def _message_contains_asset(data: dict, asset_id: str) -> bool:
+        """Check if a message contains a specific asset_id."""
+        # Direct asset_id field
+        if data.get("asset_id") == asset_id:
+            return True
+        if data.get("assetId") == asset_id:
+            return True
+        
+        # assets_ids list
+        assets_ids = data.get("assets_ids", [])
+        if isinstance(assets_ids, list) and asset_id in assets_ids:
+            return True
+        
+        # price_changes list
+        price_changes = data.get("price_changes", [])
+        if isinstance(price_changes, list):
+            for change in price_changes:
+                if isinstance(change, dict):
+                    if change.get("asset_id") == asset_id or change.get("assetId") == asset_id:
+                        return True
+        
+        return False
+
+    
     def get_messages_since(self, last_id: str = "0", count: int = 50) -> list[dict[str, Any]]:
         """
         Get messages after a specific stream ID.

@@ -14,14 +14,17 @@ _redis_pub = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=int(os.gete
 
 @router.get("/recent")
 async def get_recent_market_data(
+    asset_id: str = Query(..., description="Asset ID to subscribe to and receive data from"),
     count: int = Query(50, ge=1, le=1000, description="Number of recent messages"),
 ):
     """
-    Get recent market data from the WebSocket stream.
+    Get recent market data from the WebSocket stream for a specific asset.
     
-    Returns the most recent N messages stored in Redis from the live WebSocket connection.
+    Providing an asset_id triggers the WebSocket worker to subscribe to that asset
+    and start streaming data to Redis.
     
     **Query Parameters:**
+    - `asset_id`: Asset ID to subscribe to (required) - triggers WebSocket streaming
     - `count`: Number of messages to retrieve (default: 50, max: 1000)
     
     **Response:**
@@ -39,39 +42,24 @@ async def get_recent_market_data(
     ]
     ```
     """
-    return stream_service.get_recent_messages(count=count)
+    # Update the worker subscription for this asset
+    try:
+        _redis_pub.publish(
+            "live-data-control",
+            json.dumps({"asset_ids": [asset_id]})
+        )
+    except Exception as e:
+        # Log but don't fail - still return messages even if control fails
+        print(f"Warning: Failed to update worker subscription: {e}")
+    
+    # Return messages filtered by asset_id
+    return stream_service.get_messages_by_asset(asset_id=asset_id, count=count)
 
 
-@router.get("/since/{last_id}")
-async def get_messages_since(
-    last_id: str,  # path parameter (do not use Query for path params)
-    count: int = Query(50, ge=1, le=1000),
-):
-    """
-    Get market data messages after a specific stream ID.
-    
-    Useful for pagination / resuming from a known point.
-    
-    **Path Parameters:**
-    - `last_id`: Stream entry ID (format: timestamp-sequence)
-    
-    **Query Parameters:**
-    - `count`: Number of messages to retrieve
-    """
-    return stream_service.get_messages_since(last_id=last_id, count=count)
 
 
-@router.get("/info")
-async def get_stream_info():
-    """
-    Get stream metadata and statistics.
-    
-    Returns:
-    - `length`: Total number of messages in stream
-    - `first_entry_id`: ID of oldest message
-    - `last_entry_id`: ID of newest message
-    """
-    return stream_service.get_stream_info()
+
+
 
 
 @router.get("/health")
@@ -91,17 +79,3 @@ async def health_check():
         }
 
 
-@router.post("/control")
-async def publish_control(payload: dict = Body(...)):
-    """Publish a control message to the worker via Redis pub/sub.
-
-    Expected body example:
-    {
-        "asset_ids": ["id1", "id2"]
-    }
-    """
-    try:
-        _redis_pub.publish("live-data-control", json.dumps(payload))
-        return {"status": "ok", "message": "control published"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}

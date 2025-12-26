@@ -46,6 +46,7 @@ async def get_market_service() -> MarketService:
     response_model=MarketListResponse,
     summary="List markets with filters",
 )
+
 async def list_markets(
     current_user: Annotated[User, Depends(get_current_active_user)],
     market_service: MarketService = Depends(get_market_service),
