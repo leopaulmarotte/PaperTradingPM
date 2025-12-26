@@ -1,81 +1,66 @@
-"""
-Router for market stream data endpoints (from WebSocket -> Redis).
-"""
-from fastapi import APIRouter, Query, Body
-from app.services.redis_stream_service import RedisStreamService
+from fastapi import APIRouter, Query
 import os
 import json
 import redis
 
 router = APIRouter(prefix="/market-stream", tags=["Market Stream"])
-stream_service = RedisStreamService()
-_redis_pub = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=int(os.getenv("REDIS_PORT", 6379)), decode_responses=True)
+
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_STREAM_KEY = os.getenv("REDIS_STREAM_KEY", "polymarket:market_stream")
+REDIS_JSON_KEY = os.getenv("REDIS_JSON_KEY", "polymarket:messages_json")
+REDIS_PAUSE_KEY = os.getenv("REDIS_PAUSE_KEY", "polymarket:worker_paused")
+
+_redis_pub = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+_redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
 
-@router.get("/recent")
-async def get_recent_market_data(
-    asset_id: str = Query(..., description="Asset ID to subscribe to and receive data from"),
-    count: int = Query(50, ge=1, le=1000, description="Number of recent messages"),
-):
-    """
-    Get recent market data from the WebSocket stream for a specific asset.
-    
-    Providing an asset_id triggers the WebSocket worker to subscribe to that asset
-    and start streaming data to Redis.
-    
-    **Query Parameters:**
-    - `asset_id`: Asset ID to subscribe to (required) - triggers WebSocket streaming
-    - `count`: Number of messages to retrieve (default: 50, max: 1000)
-    
-    **Response:**
-    ```json
-    [
-        {
-            "id": "1703430000000-0",
-            "timestamp": "2025-12-24T10:00:00.000Z",
-            "data": {
-                "type": "market",
-                "assets_ids": ["..."],
-                ...
-            }
-        }
-    ]
-    ```
-    """
-    # Update the worker subscription for this asset
+@router.post("/start")
+async def start_stream(asset_id: str = Query(..., description="Asset ID to stream")):
     try:
-        _redis_pub.publish(
-            "live-data-control",
-            json.dumps({"asset_ids": [asset_id]})
-        )
+        # Clear pause flag
+        _redis_client.delete(REDIS_PAUSE_KEY)
+        # Publish asset_ids to control channel
+        _redis_pub.publish("live-data-control", json.dumps({"asset_ids": [asset_id]}))
+        return {
+            "status": "started",
+            "asset_id": asset_id,
+            "message": f"Streaming started for asset {asset_id}"
+        }
     except Exception as e:
-        # Log but don't fail - still return messages even if control fails
-        print(f"Warning: Failed to update worker subscription: {e}")
-    
-    # Return messages filtered by asset_id
-    return stream_service.get_messages_by_asset(asset_id=asset_id, count=count)
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/stop")
+async def stop_stream():
+    try:
+        # Set pause flag
+        _redis_client.set(REDIS_PAUSE_KEY, "1")
+        # Publish stop
+        _redis_pub.publish("live-data-control", json.dumps({"stop": True}))
+        return {"status": "stopped", "message": "Stop command sent and data cleared"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/messages")
+async def get_messages():
+    try:
+        data = _redis_client.get(REDIS_JSON_KEY)
+        messages = json.loads(data) if data else []
+        return {"status": "ok", "count": len(messages), "messages": messages}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "messages": []}
 
 
 
-
-
-
-
-
-@router.get("/health")
-async def health_check():
-    """
-    Health check for Redis connection.
-    """
-    if stream_service.test_connection():
-        return {
-            "status": "ok",
-            "message": "Redis stream service is healthy",
-        }
-    else:
-        return {
-            "status": "error",
-            "message": "Redis connection failed",
-        }
-
-
+@router.get("/latest")
+async def get_latest_message():
+    try:
+        msgs = _redis_client.xrevrange(REDIS_STREAM_KEY, count=1)
+        if msgs:
+            entry_id, fields = msgs[0]
+            return {"status": "ok", "message": json.loads(fields.get("data", "{}"))}
+        return {"status": "no_data", "message": None}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
