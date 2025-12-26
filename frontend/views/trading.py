@@ -289,13 +289,7 @@ def _render_trade_form(api: APIClient, market: dict):
 
 		st.caption(f"🔹 Tokens disponibles ({outcome}): {available_qty:.2f}")
 		st.caption(f"🧾 Portefeuille sélectionné: {selected_portfolio.get('name', '')} (ID: {selected_portfolio_id})")
-		with st.expander("Détails positions (debug)", expanded=False):
-			st.write({"market_keys": market_keys, "norm_outcome": norm_outcome, "available": available_qty})
-			st.write("Positions (market_id, outcome) -> qty")
-			st.json(current_positions)
-			st.write("Trades bruts")
-			st.json(trades)
-			
+		
 		with col2:
 			# Price (MOC - Market On Close simulation)
 			moc_price = price_map.get(outcome, 0.5)

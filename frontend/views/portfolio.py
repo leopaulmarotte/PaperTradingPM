@@ -125,6 +125,9 @@ def render():
                             has_positions = False
                             for (market, outcome), agg in positions.items():
                                 qty = agg["qty"]
+                                # Skip positions with zero quantity
+                                if qty == 0:
+                                    continue
                                 avg_price = 0 if qty == 0 else agg["notional"] / (agg["qty"] if agg["qty"] else 1)
                                 exposure = qty * avg_price if qty and avg_price else 0
                                 total_exposure += exposure
