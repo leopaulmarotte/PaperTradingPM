@@ -298,10 +298,11 @@ def _render_trade_form(api: APIClient, market: dict):
 			
 			# Quantity
 			prefill_max = st.session_state.get("prefill_max_qty")
+			use_max = bool(st.session_state.get("prefill_use_max"))
 			default_qty = 10.0
 			min_qty = 0.01
 			if default_action == "SELL" and isinstance(prefill_max, (int, float)) and prefill_max > 0:
-				default_qty = min(prefill_max, default_qty)
+				default_qty = prefill_max if use_max else min(prefill_max, default_qty)
 				quantity = st.number_input(
 					"Quantité",
 					min_value=min_qty,
@@ -309,7 +310,7 @@ def _render_trade_form(api: APIClient, market: dict):
 					value=float(default_qty),
 					step=1.0,
 					format="%.2f",
-					help=f"Nombre de tokens à vendre (max {prefill_max:.2f})"
+					help=(f"Vendre toute la position ({prefill_max:.2f})" if use_max else f"Nombre de tokens à vendre (max {prefill_max:.2f})")
 				)
 			else:
 				quantity = st.number_input(
@@ -389,6 +390,7 @@ def _render_trade_form(api: APIClient, market: dict):
 					st.session_state.pop("prefill_action", None)
 					st.session_state.pop("prefill_outcome", None)
 					st.session_state.pop("prefill_max_qty", None)
+					st.session_state.pop("prefill_use_max", None)
 					# Refresh after short delay
 					import time
 					time.sleep(1)

@@ -17,6 +17,49 @@ from config import API_URL
 from utils.api import APIClient
 
 
+def _extract_market_name(market: dict) -> str:
+	"""Return a readable market name from market dict."""
+	try:
+		name = market.get("question") or market.get("name") or market.get("title")
+		if name:
+			return name
+		slug = market.get("slug") or ""
+		if slug:
+			return slug.replace("-", " ").replace("_", " ").title()
+		return "Marché"
+	except Exception:
+		return "Marché"
+
+
+def _resolve_market_name(api: APIClient, market_id: Optional[str], cache: dict) -> str:
+	"""Resolve market name from a market identifier using cache + API."""
+	if not market_id:
+		return ""
+	# Use cache if available
+	if market_id in cache:
+		return cache[market_id]
+	
+	# Try slug endpoint first
+	resp = api.get_market(market_id)
+	if resp.get("status") == 200 and isinstance(resp.get("data"), dict):
+		market = resp["data"]
+		name = _extract_market_name(market)
+		cache[market_id] = name
+		return name
+	
+	# Fallback to condition endpoint
+	resp2 = api.get_market_by_condition(market_id)
+	if resp2.get("status") == 200 and isinstance(resp2.get("data"), dict):
+		market = resp2["data"]
+		name = _extract_market_name(market)
+		cache[market_id] = name
+		return name
+
+	# If unresolved, cache empty to avoid repeated calls
+	cache[market_id] = ""
+	return ""
+
+
 def _parse_datetime(date_str: str) -> Optional[datetime]:
 	"""Parse ISO format datetime string."""
 	try:
@@ -42,6 +85,7 @@ def _fetch_all_trades(api: APIClient) -> List[Dict]:
 		List of trade dictionaries with enriched portfolio_name field
 	"""
 	all_trades = []
+	market_name_cache: dict = {}
 	
 	# Get list of all portfolios
 	portfolios_resp = api.list_portfolios()
@@ -80,6 +124,9 @@ def _fetch_all_trades(api: APIClient) -> List[Dict]:
 			if isinstance(trade, dict):
 				trade["portfolio_name"] = portfolio_name
 				trade["portfolio_id"] = portfolio_id
+				# Resolve market name
+				mid = trade.get("market_id")
+				trade["market_name"] = _resolve_market_name(api, mid, market_name_cache)
 				all_trades.append(trade)
 	
 	return all_trades
@@ -110,6 +157,7 @@ def _build_trades_dataframe(trades: List[Dict]) -> pd.DataFrame:
 			
 			# Get fields
 			portfolio = trade.get("portfolio_name", "N/A")
+			market_name = trade.get("market_name", "")
 			action = (trade.get("side") or "").upper()
 			outcome = (trade.get("outcome") or "").upper()
 			quantity = float(trade.get("quantity") or 0)
@@ -123,6 +171,7 @@ def _build_trades_dataframe(trades: List[Dict]) -> pd.DataFrame:
 				"Date": date_str,
 				"Heure": time_str,
 				"Portefeuille": portfolio,
+				"Marché": market_name,
 				"Action": action,
 				"Token": outcome,
 				"Quantité": quantity,
@@ -199,6 +248,7 @@ def render():
 				"Date": st.column_config.TextColumn(width="small"),
 				"Heure": st.column_config.TextColumn(width="small"),
 				"Portefeuille": st.column_config.TextColumn(),
+				"Marché": st.column_config.TextColumn(),
 				"Action": st.column_config.TextColumn(width="small"),
 				"Token": st.column_config.TextColumn(width="small"),
 				"Quantité": st.column_config.NumberColumn(format="%.4f"),

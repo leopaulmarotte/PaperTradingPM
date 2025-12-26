@@ -145,6 +145,10 @@ class APIClient:
     def get_market(self, slug: str) -> dict:
         """Get market by slug."""
         return self._get(f"/markets/by-slug/{slug}")
+
+    def get_market_by_condition(self, condition_id: str) -> dict:
+        """Get market by on-chain condition ID."""
+        return self._get(f"/markets/by-condition/{condition_id}")
     
     def get_price_history(self, slug: str, outcome_index: int = 0) -> dict:
         """Get price history for market."""

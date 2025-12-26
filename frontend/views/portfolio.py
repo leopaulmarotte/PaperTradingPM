@@ -133,7 +133,7 @@ def render():
                                 total_exposure += exposure
                                 has_positions = True
 
-                                cols = st.columns([3, 2, 2, 2, 1.5])
+                                cols = st.columns([3, 2, 2, 2, 1.5, 1.5])
                                 with cols[0]:
                                     st.write(f"Marché: {market}")
                                     st.caption(f"Issue: {outcome}")
@@ -145,8 +145,8 @@ def render():
                                     st.metric("Exposition", f"${exposure:,.2f}")
                                 with cols[4]:
                                     sell_disabled = qty <= 0
-                                    if st.button("Vendre", key=f"sell_{pid}_{market}_{outcome}", disabled=sell_disabled, use_container_width=True):
-                                        # Navigate to Trading page and open market detail prefilled for SELL on this outcome
+                                    if st.button("Modifier", key=f"modify_{pid}_{market}_{outcome}", disabled=sell_disabled, use_container_width=True):
+                                        # Navigate to Trading page and open market detail prefilled (edit the position)
                                         st.session_state["nav_page"] = "Trading"
                                         st.session_state["nav_override"] = "Trading"
                                         st.session_state["selected_market"] = market
@@ -156,6 +156,49 @@ def render():
                                         st.session_state["prefill_max_qty"] = float(qty)
                                         st.session_state["prefill_portfolio_id"] = pid
                                         st.rerun()
+                                with cols[5]:
+                                    liquidate_disabled = qty <= 0
+                                    if st.button("Liquider", key=f"liquidate_{pid}_{market}_{outcome}", disabled=liquidate_disabled, use_container_width=True):
+                                        # Execute immediate liquidation: create SELL trade for full quantity
+                                        with st.spinner("Liquidation en cours..."):
+                                            # Resolve market details to get outcome price
+                                            sell_price = 0.5
+                                            market_resp = api.get_market(market)
+                                            if not (isinstance(market_resp, dict) and market_resp.get("status") == 200):
+                                                # Try by condition id
+                                                market_resp = api.get_market_by_condition(market)
+                                            if isinstance(market_resp, dict) and market_resp.get("status") == 200:
+                                                mdata = market_resp.get("data", {})
+                                                outcomes = mdata.get("outcomes") or []
+                                                prices = mdata.get("outcome_prices") or []
+                                                # Match outcome by case-insensitive comparison
+                                                norm_out = (outcome or "").strip().lower()
+                                                found_idx = None
+                                                for i, o in enumerate(outcomes):
+                                                    if (o or "").strip().lower() == norm_out:
+                                                        found_idx = i
+                                                        break
+                                                if found_idx is not None and found_idx < len(prices):
+                                                    try:
+                                                        sell_price = float(prices[found_idx])
+                                                    except Exception:
+                                                        sell_price = 0.5
+                                            # Create trade
+                                            resp_trade = api.create_trade(
+                                                portfolio_id=pid,
+                                                market_id=market,
+                                                outcome=outcome,
+                                                side="sell",
+                                                quantity=float(qty),
+                                                price=float(sell_price),
+                                                notes="Liquidation automatique",
+                                            )
+                                            if resp_trade.get("status") in (200, 201):
+                                                st.success("Position liquidée avec succès")
+                                                st.rerun()
+                                            else:
+                                                detail = resp_trade.get("data", {}).get("detail") if isinstance(resp_trade.get("data"), dict) else resp_trade.get("error")
+                                                st.error(detail or "Échec de la liquidation")
 
                             if has_positions:
                                 st.caption(f"Exposition totale estimée: {total_exposure:,.2f}")
