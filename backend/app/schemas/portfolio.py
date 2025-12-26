@@ -32,6 +32,7 @@ class PortfolioResponse(BaseModel):
     name: str = Field(..., description="Portfolio name")
     description: Optional[str] = Field(None, description="Portfolio description")
     initial_balance: float = Field(..., description="Starting balance")
+    cash_balance: float = Field(..., description="Current cash balance")
     created_at: datetime = Field(..., description="Creation timestamp")
     is_active: bool = Field(..., description="Active status")
 

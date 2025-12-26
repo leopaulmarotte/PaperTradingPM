@@ -19,6 +19,21 @@ class APIClient:
             headers["Authorization"] = f"Bearer {st.session_state.token}"
         return headers
     
+    def _parse_json(self, resp) -> Optional[dict]:
+        """Safely parse JSON, return None or text on failure."""
+        try:
+            if resp is None:
+                return None
+            if not resp.text:
+                return None
+            return resp.json()
+        except ValueError:
+            # Non-JSON response
+            try:
+                return {"raw": resp.text}
+            except Exception:
+                return None
+
     def _get(self, endpoint: str, params: Optional[dict] = None) -> dict:
         """Make GET request."""
         try:
@@ -33,7 +48,7 @@ class APIClient:
                 params=params,
                 timeout=30,
             )
-            return {"status": resp.status_code, "data": resp.json() if resp.text else None}
+            return {"status": resp.status_code, "data": self._parse_json(resp)}
         except requests.exceptions.ConnectionError:
             return {"status": 0, "error": "Cannot connect to backend"}
         except Exception as e:
@@ -54,7 +69,7 @@ class APIClient:
                 params=params,
                 timeout=30,
             )
-            return {"status": resp.status_code, "data": resp.json() if resp.text else None}
+            return {"status": resp.status_code, "data": self._parse_json(resp)}
         except requests.exceptions.ConnectionError:
             return {"status": 0, "error": "Cannot connect to backend"}
         except Exception as e:
@@ -172,9 +187,31 @@ class APIClient:
                 params=params,
                 timeout=30,
             )
-            return {"status": resp.status_code, "data": resp.json() if resp.text else None}
+            return {"status": resp.status_code, "data": self._parse_json(resp)}
         except requests.exceptions.ConnectionError:
             return {"status": 0, "error": "Cannot connect to backend"}
         except Exception as e:
             return {"status": 0, "error": str(e)}
+    
+    def create_trade(
+        self, 
+        portfolio_id: str, 
+        market_id: str, 
+        outcome: str, 
+        side: str, 
+        quantity: float, 
+        price: float,
+        notes: Optional[str] = None
+    ) -> dict:
+        """Create a new trade."""
+        data = {
+            "market_id": market_id,
+            "outcome": outcome,
+            "side": side,
+            "quantity": quantity,
+            "price": price,
+        }
+        if notes:
+            data["notes"] = notes
+        return self._post(f"/portfolios/{portfolio_id}/trades", data)
 

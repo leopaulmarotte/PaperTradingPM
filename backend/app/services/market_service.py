@@ -119,10 +119,12 @@ class MarketService:
         # Build query
         query: dict[str, Any] = {}
         
+        # Use the stored active/closed flags for now (simpler and more reliable)
         if filters.closed is not None:
             query["closed"] = filters.closed
         if filters.active is not None:
             query["active"] = filters.active
+        
         if filters.search:
             query["$text"] = {"$search": filters.search}
         if filters.volume_min is not None:
@@ -139,7 +141,7 @@ class MarketService:
             "volume_24h": "volume_24hr",
             "volume": "volume_num",
             "liquidity": "liquidity_num",
-            "end_date": "end_date_iso",
+            "end_date": "end_date",
         }
         sort_field = filters.sort_by or "volume_num"
         # Map friendly name to DB field if needed
@@ -199,7 +201,7 @@ class MarketService:
             "volume_24h": "volume_24hr",
             "volume": "volume_num",
             "liquidity": "liquidity_num",
-            "end_date": "end_date_iso",
+            "end_date": "end_date",
         }
         sort_field = sort_field_map.get(sort_by, sort_by)
         
@@ -508,7 +510,7 @@ class MarketService:
             spread=doc.get("spread"),
             closed=doc.get("closed", False),
             active=doc.get("active", True),
-            end_date=doc.get("end_date_iso"),
+            end_date=doc.get("end_date"),
         )
     
     def _doc_to_detail_response(self, doc: dict) -> MarketDetailResponse:
@@ -530,7 +532,7 @@ class MarketService:
             spread=doc.get("spread"),
             closed=doc.get("closed", False),
             active=doc.get("active", True),
-            end_date=doc.get("end_date_iso"),
+            end_date=doc.get("end_date"),
             image=doc.get("image"),
             icon=doc.get("icon"),
             tags=doc.get("tags", []),
@@ -558,7 +560,7 @@ class MarketService:
             spread=market.spread,
             closed=market.closed,
             active=market.active,
-            end_date=market.end_date_iso,
+            end_date=market.end_date,
             image=market.image,
             icon=market.icon,
             tags=market.tags,

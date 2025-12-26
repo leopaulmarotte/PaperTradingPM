@@ -47,8 +47,9 @@ class PortfolioService:
         
         result = await self.portfolios.insert_one(portfolio_doc)
         portfolio_doc["_id"] = result.inserted_id
-        
-        return self._portfolio_to_response(portfolio_doc)
+        # No trades yet, cash balance equals initial balance
+        cash_balance = request.initial_balance
+        return self._portfolio_to_response(portfolio_doc, cash_balance)
     
     async def get_portfolio(
         self, portfolio_id: str, user_id: str
@@ -65,13 +66,21 @@ class PortfolioService:
         if not portfolio_doc:
             return None
         
-        return self._portfolio_to_response(portfolio_doc)
+        cash_balance = await self._calculate_cash_balance(portfolio_id, portfolio_doc["initial_balance"])
+        return self._portfolio_to_response(portfolio_doc, cash_balance)
     
     async def list_portfolios(self, user_id: str) -> list[PortfolioResponse]:
         """List all portfolios for a user."""
         cursor = self.portfolios.find({"user_id": user_id})
         portfolios = await cursor.to_list(length=100)
-        return [self._portfolio_to_response(p) for p in portfolios]
+        
+        # Calculate cash balance for each portfolio
+        responses = []
+        for p in portfolios:
+            cash_balance = await self._calculate_cash_balance(str(p["_id"]), p["initial_balance"])
+            responses.append(self._portfolio_to_response(p, cash_balance))
+        
+        return responses
     
     async def update_portfolio(
         self, portfolio_id: str, user_id: str, request: PortfolioUpdate
@@ -94,7 +103,8 @@ class PortfolioService:
         if not result:
             return None
         
-        return self._portfolio_to_response(result)
+        cash_balance = await self._calculate_cash_balance(portfolio_id, result["initial_balance"])
+        return self._portfolio_to_response(result, cash_balance)
     
     async def delete_portfolio(self, portfolio_id: str, user_id: str) -> bool:
         """Delete a portfolio and its trades."""
@@ -257,7 +267,22 @@ class PortfolioService:
     
     # ==================== Helper Methods ====================
     
-    def _portfolio_to_response(self, doc: dict) -> PortfolioResponse:
+    async def _calculate_cash_balance(self, portfolio_id: str, initial_balance: float) -> float:
+        """Calculate current cash balance from initial balance and trades."""
+        cursor = self.trades.find({"portfolio_id": portfolio_id})
+        trades = await cursor.to_list(length=None)
+        
+        cash_balance = initial_balance
+        for trade in trades:
+            trade_value = trade["quantity"] * trade["price"]
+            if trade["side"] == "buy":
+                cash_balance -= trade_value
+            else:  # sell
+                cash_balance += trade_value
+        
+        return cash_balance
+    
+    def _portfolio_to_response(self, doc: dict, cash_balance: float) -> PortfolioResponse:
         """Convert MongoDB document to PortfolioResponse."""
         return PortfolioResponse(
             id=str(doc["_id"]),
@@ -265,6 +290,7 @@ class PortfolioService:
             name=doc["name"],
             description=doc.get("description"),
             initial_balance=doc["initial_balance"],
+            cash_balance=cash_balance,
             created_at=doc["created_at"],
             is_active=doc.get("is_active", True),
         )
