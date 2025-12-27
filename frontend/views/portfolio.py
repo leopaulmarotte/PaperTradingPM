@@ -44,45 +44,229 @@ def render():
         if isinstance(portfolios, dict):
             portfolios = list(portfolios.values())
         if portfolios:
+            # CSS for portfolio cards
+            st.markdown("""
+            <style>
+            .portfolio-card {
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                border-radius: 16px;
+                padding: 24px;
+                margin-bottom: 20px;
+                border: 1px solid rgba(99, 102, 241, 0.2);
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            }
+            .portfolio-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }
+            .portfolio-name {
+                font-size: 1.4rem;
+                font-weight: 700;
+                color: #ffffff;
+                margin: 0;
+            }
+            .portfolio-id {
+                font-size: 0.75rem;
+                color: #888;
+                margin-top: 4px;
+            }
+            .portfolio-metrics {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 16px;
+            }
+            .metric-box {
+                background: rgba(255, 255, 255, 0.03);
+                border-radius: 12px;
+                padding: 16px;
+                text-align: center;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            .metric-label {
+                font-size: 0.75rem;
+                color: #888;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 6px;
+            }
+            .metric-value {
+                font-size: 1.3rem;
+                font-weight: 700;
+                color: #fff;
+            }
+            .metric-value.positive {
+                color: #22c55e;
+            }
+            .metric-value.negative {
+                color: #ef4444;
+            }
+            .metric-value.neutral {
+                color: #6366f1;
+            }
+            .perf-badge {
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.85rem;
+                font-weight: 600;
+            }
+            .perf-badge.positive {
+                background: rgba(34, 197, 94, 0.15);
+                color: #22c55e;
+            }
+            .perf-badge.negative {
+                background: rgba(239, 68, 68, 0.15);
+                color: #ef4444;
+            }
+            .perf-badge.neutral {
+                background: rgba(99, 102, 241, 0.15);
+                color: #6366f1;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             for p in portfolios:
                 name = p.get("name", "Sans nom")
-                balance = p.get("cash_balance") or p.get("initial_balance", 0)
+                cash_balance = p.get("cash_balance") or p.get("initial_balance", 0)
+                initial_balance = p.get("initial_balance", 0)
                 pid = p.get("_id") or p.get("id")
-                with st.container():
-                    col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
-                    with col1:
-                        st.markdown(f"**{name}**")
-                        st.caption(f"ID: {pid}")
-                    with col2:
-                        st.metric("Disponible", f"${balance:,.2f}")
-                    with col3:
-                        if st.button(
-                            "Détails" if st.session_state.selected_portfolio_id != pid else "Masquer",
-                            key=f"view_{pid}",
-                            use_container_width=True,
-                        ):
-                            # Toggle selection
+                
+                # Calculate total portfolio value (cash + positions)
+                total_exposure = 0.0
+                positions_count = 0
+                
+                # Get trades to calculate positions value
+                trades_resp = api.get_trades(pid, page=1, page_size=100)
+                if trades_resp.get("status") == 200:
+                    data_trades = trades_resp.get("data")
+                    if isinstance(data_trades, dict):
+                        trades = data_trades.get("trades") or []
+                    elif isinstance(data_trades, list):
+                        trades = data_trades
+                    else:
+                        trades = []
+                    
+                    if trades:
+                        trades = sorted(trades, key=lambda t: t.get("created_at") or t.get("timestamp") or "")
+                        positions = {}
+                        for t in trades:
+                            if not isinstance(t, dict):
+                                continue
+                            market = t.get("market_id") or "N/A"
+                            outcome = t.get("outcome") or "N/A"
+                            side = t.get("side") or "buy"
+                            qty = t.get("quantity", 0) or 0
+                            price = t.get("price", 0) or 0
+                            key = (market, outcome)
+                            if key not in positions:
+                                positions[key] = {"qty": 0.0, "notional": 0.0}
+                            delta = qty if side == "buy" else -qty
+                            positions[key]["qty"] += delta
+                            positions[key]["notional"] += price * qty * (1 if side == "buy" else -1)
+                        
+                        for (market, outcome), agg in positions.items():
+                            qty = agg["qty"]
+                            if qty <= 0:
+                                continue
+                            positions_count += 1
+                            avg_price = agg["notional"] / qty if qty else 0
+                            current_price = avg_price
+                            
+                            # Try to get current price
+                            market_resp = api.get_market(market)
+                            if not (isinstance(market_resp, dict) and market_resp.get("status") == 200):
+                                market_resp = api.get_market_by_condition(market)
+                            if isinstance(market_resp, dict) and market_resp.get("status") == 200:
+                                mdata = market_resp.get("data", {})
+                                outcomes_list = mdata.get("outcomes") or []
+                                prices = mdata.get("outcome_prices") or []
+                                norm_out = (outcome or "").strip().lower()
+                                for i, o in enumerate(outcomes_list):
+                                    if (o or "").strip().lower() == norm_out and i < len(prices):
+                                        try:
+                                            current_price = float(prices[i])
+                                        except:
+                                            pass
+                                        break
+                            
+                            total_exposure += qty * current_price
+                
+                # Calculate total value and performance
+                total_value = cash_balance + total_exposure
+                if initial_balance > 0:
+                    performance = ((total_value - initial_balance) / initial_balance) * 100
+                else:
+                    performance = 0
+                
+                perf_class = "positive" if performance > 0 else ("negative" if performance < 0 else "neutral")
+                perf_sign = "+" if performance > 0 else ""
+                
+                # Render portfolio card
+                st.markdown(f"""
+                <div class="portfolio-card">
+                    <div class="portfolio-header">
+                        <div>
+                            <div class="portfolio-name">{name}</div>
+                            <div class="portfolio-id">ID: {pid}</div>
+                        </div>
+                        <div class="perf-badge {perf_class}">{perf_sign}{performance:.2f}%</div>
+                    </div>
+                    <div class="portfolio-metrics">
+                        <div class="metric-box">
+                            <div class="metric-label">Valeur Totale</div>
+                            <div class="metric-value neutral">${total_value:,.2f}</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">Cash Disponible</div>
+                            <div class="metric-value">${cash_balance:,.2f}</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">En Position</div>
+                            <div class="metric-value">${total_exposure:,.2f}</div>
+                        </div>
+                        <div class="metric-box">
+                            <div class="metric-label">P&L</div>
+                            <div class="metric-value {perf_class}">{perf_sign}${total_value - initial_balance:,.2f}</div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Action buttons
+                col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+                with col1:
+                    if st.button(
+                        "📊 Détails" if st.session_state.selected_portfolio_id != pid else "🔼 Masquer",
+                        key=f"view_{pid}",
+                        use_container_width=True,
+                    ):
+                        if st.session_state.selected_portfolio_id == pid:
+                            st.session_state.selected_portfolio_id = None
+                        else:
+                            st.session_state.selected_portfolio_id = pid
+                        st.rerun()
+                with col2:
+                    if st.button("📈 Metrics", key=f"metrics_{pid}", use_container_width=True):
+                        st.session_state["metrics_portfolio_id"] = pid
+                        st.session_state["nav_override"] = "Metrics"
+                        st.rerun()
+                with col3:
+                    if st.button("💹 Trader", key=f"trade_{pid}", use_container_width=True):
+                        st.session_state["nav_override"] = "Trading"
+                        st.rerun()
+                with col4:
+                    if st.button("🗑️ Supprimer", key=f"delete_{pid}", use_container_width=True):
+                        del_resp = api.delete_portfolio(pid)
+                        if del_resp.get("status") in (200, 204):
+                            st.success("Portfolio supprimé")
                             if st.session_state.selected_portfolio_id == pid:
                                 st.session_state.selected_portfolio_id = None
-                            else:
-                                st.session_state.selected_portfolio_id = pid
                             st.rerun()
-                    with col4:
-                        if st.button("📈", key=f"metrics_{pid}", use_container_width=True, help="Voir la performance"):
-                            st.session_state["metrics_portfolio_id"] = pid
-                            st.session_state["nav_override"] = "Metrics"
-                            st.rerun()
-                    with col5:
-                        if st.button("🗑️", key=f"delete_{pid}", use_container_width=True, help="Supprimer ce portfolio"):
-                            del_resp = api.delete_portfolio(pid)
-                            if del_resp.get("status") in (200, 204):
-                                st.success("Portfolio supprimé")
-                                if st.session_state.selected_portfolio_id == pid:
-                                    st.session_state.selected_portfolio_id = None
-                                st.rerun()
-                            else:
-                                detail = del_resp.get("data", {}).get("detail") if isinstance(del_resp.get("data"), dict) else del_resp.get("error")
-                                st.error(detail or "Suppression impossible")
+                        else:
+                            detail = del_resp.get("data", {}).get("detail") if isinstance(del_resp.get("data"), dict) else del_resp.get("error")
+                            st.error(detail or "Suppression impossible")
 
                 # Inline detail if selected
                 if st.session_state.selected_portfolio_id == pid:
@@ -358,9 +542,12 @@ def render():
                                     
                                     st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
                                 
-                                # Calculate global performance
-                                if total_cost > 0:
-                                    global_perf = ((total_exposure - total_cost) / total_cost) * 100
+                                # Calculate global performance based on initial balance vs current total value
+                                cash_balance = p_detail.get("cash_balance", 0) or 0
+                                total_value = cash_balance + total_exposure
+                                
+                                if init_bal > 0:
+                                    global_perf = ((total_value - init_bal) / init_bal) * 100
                                     perf_sign = "+" if global_perf >= 0 else ""
                                     perf_class = "perf-positive-bg" if global_perf >= 0 else "perf-negative-bg"
                                 else:
@@ -368,12 +555,12 @@ def render():
                                     perf_sign = ""
                                     perf_class = ""
                                 
-                                # Portfolio summary with exposure and performance
+                                # Portfolio summary with total value and performance
                                 st.markdown(f"""
                                 <div class="portfolio-summary">
                                     <div class="summary-card">
-                                        <div class="summary-label">Exposition Totale</div>
-                                        <div class="summary-value">${total_exposure:,.2f}</div>
+                                        <div class="summary-label">Valeur Totale</div>
+                                        <div class="summary-value">${total_value:,.2f}</div>
                                     </div>
                                     <div class="summary-card {perf_class}">
                                         <div class="summary-label">Performance Globale</div>
