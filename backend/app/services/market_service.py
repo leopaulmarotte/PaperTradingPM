@@ -295,10 +295,56 @@ class MarketService:
         
         # Check cache
         cache_key = f"{slug}:{token_id}"
-        if not force_refresh:
-            cached = await self.price_history_col.find_one({"_id": cache_key})
-            if cached and cached.get("history"):
-                history = self._filter_history(cached["history"], start_ts, end_ts)
+        cached = await self.price_history_col.find_one({"_id": cache_key})
+        cached_history = cached.get("history", []) if cached else []
+        last_fetched_at = cached.get("fetched_at") if cached else None
+        
+        # Ensure last_fetched_at is timezone-aware
+        if last_fetched_at and last_fetched_at.tzinfo is None:
+            last_fetched_at = last_fetched_at.replace(tzinfo=timezone.utc)
+        
+        api = await get_polymarket_api()
+        now = datetime.now(timezone.utc)
+        
+        # Determine if we need to fetch new data
+        need_fetch = force_refresh or not cached_history
+        incremental_start_ts = None
+        
+        if not need_fetch and last_fetched_at:
+            # Check if cache is older than 5 minutes - do incremental update
+            cache_age = (now - last_fetched_at).total_seconds()
+            if cache_age > 300:  # 5 minutes
+                need_fetch = True
+                # Use last_fetched_at as start timestamp for incremental fetch
+                incremental_start_ts = int(last_fetched_at.timestamp())
+        
+        if not need_fetch and cached_history:
+            # Return cached data as-is (fresh enough)
+            history = self._filter_history(cached_history, start_ts, end_ts)
+            return PriceHistoryResponse(
+                slug=slug,
+                outcome=outcome_name,
+                outcome_index=outcome_index,
+                token_id=token_id,
+                history=history,
+                total_points=len(history),
+                cached_at=last_fetched_at,
+            )
+        
+        # Fetch from CLOB API (full or incremental)
+        try:
+            fetch_start = incremental_start_ts if incremental_start_ts else start_ts
+            new_history = await api.get_price_history(
+                token_id,
+                start_ts=fetch_start,
+                end_ts=end_ts,
+            )
+        except Exception as e:
+            # Log error and return cached history if available, otherwise empty
+            import logging
+            logging.warning(f"Failed to fetch price history for {slug}: {e}")
+            if cached_history:
+                history = self._filter_history(cached_history, start_ts, end_ts)
                 return PriceHistoryResponse(
                     slug=slug,
                     outcome=outcome_name,
@@ -306,21 +352,8 @@ class MarketService:
                     token_id=token_id,
                     history=history,
                     total_points=len(history),
-                    cached_at=cached.get("fetched_at"),
+                    cached_at=last_fetched_at,
                 )
-        
-        # Fetch from CLOB API
-        api = await get_polymarket_api()
-        try:
-            raw_history = await api.get_price_history(
-                token_id,
-                start_ts=start_ts,
-                end_ts=end_ts,
-            )
-        except Exception as e:
-            # Log error and return empty history if API fails
-            import logging
-            logging.warning(f"Failed to fetch price history for {slug}: {e}")
             return PriceHistoryResponse(
                 slug=slug,
                 outcome=outcome_name,
@@ -331,8 +364,20 @@ class MarketService:
                 cached_at=None,
             )
         
-        # Cache the history
-        now = datetime.now(timezone.utc)
+        # Merge histories if incremental update
+        if incremental_start_ts and cached_history:
+            # Get existing timestamps to avoid duplicates
+            existing_timestamps = {h.get("t") for h in cached_history if h.get("t")}
+            # Add only new points
+            for point in new_history:
+                if point.get("t") not in existing_timestamps:
+                    cached_history.append(point)
+            # Sort by timestamp
+            merged_history = sorted(cached_history, key=lambda x: x.get("t", 0))
+        else:
+            merged_history = new_history
+        
+        # Cache the merged history
         await self.price_history_col.update_one(
             {"_id": cache_key},
             {
@@ -340,14 +385,14 @@ class MarketService:
                     "slug": slug,
                     "token_id": token_id,
                     "outcome_index": outcome_index,
-                    "history": raw_history,
+                    "history": merged_history,
                     "fetched_at": now,
                 }
             },
             upsert=True,
         )
         
-        history = self._filter_history(raw_history, start_ts, end_ts)
+        history = self._filter_history(merged_history, start_ts, end_ts)
         
         return PriceHistoryResponse(
             slug=slug,
