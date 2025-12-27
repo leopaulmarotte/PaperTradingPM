@@ -7,7 +7,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.database.connections import get_mongo_client
-from app.database.databases import trading_db
+from app.database.databases import trading_db, markets_db
 from app.dependencies.auth import get_current_active_user
 from app.models.user import User
 from app.schemas.portfolio import (
@@ -16,9 +16,11 @@ from app.schemas.portfolio import (
     PortfolioResponse,
     PortfolioWithPositions,
     PortfolioMetrics,
+    MarkToMarketResponse,
 )
 from app.schemas.trade import TradeCreate, TradeResponse, TradeHistory
 from app.services.portfolio_service import PortfolioService
+from app.services.mtm_service import get_mtm_service
 
 router = APIRouter(prefix="/portfolios", tags=["Portfolios"])
 
@@ -27,7 +29,8 @@ async def get_portfolio_service() -> PortfolioService:
     """Dependency to get PortfolioService instance."""
     client = await get_mongo_client()
     db = client[trading_db.DB_NAME]
-    return PortfolioService(db)
+    markets_db_instance = client[markets_db.DB_NAME]
+    return PortfolioService(db, markets_db_instance)
 
 
 # ==================== Portfolio CRUD ====================
@@ -263,3 +266,47 @@ async def get_portfolio_metrics(
         )
     
     return metrics
+
+
+@router.get(
+    "/{portfolio_id}/mtm",
+    response_model=MarkToMarketResponse,
+    summary="Get mark-to-market P&L",
+)
+async def get_mark_to_market(
+    portfolio_id: str,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    resolution: int = Query(60, ge=1, le=1440, description="Time resolution in minutes (1-1440)"),
+):
+    """
+    Calculate TRUE mark-to-market P&L using continuous market price series.
+    
+    This endpoint provides:
+    - Portfolio P&L time series based on MARKET PRICES (not just trade timestamps)
+    - Position-level P&L with VWAP average entry prices
+    - Proper realized/unrealized P&L separation
+    - Risk metrics (Sharpe, volatility, max drawdown)
+    
+    The P&L curve will move even when no trades occur, as it reflects
+    market price movements (true mark-to-market valuation).
+    
+    - **resolution**: Time resolution in minutes (default: 60 = hourly)
+    
+    Requires valid token as query parameter: `?token=xxx`
+    """
+    mtm_service = await get_mtm_service()
+    
+    result = await mtm_service.calculate_mtm(
+        portfolio_id,
+        current_user.id,
+        resolution_minutes=resolution,
+    )
+    
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portfolio not found",
+        )
+    
+    # Convert dataclass to response schema
+    return MarkToMarketResponse.from_mtm_result(result)

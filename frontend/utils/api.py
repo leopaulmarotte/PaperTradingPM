@@ -178,6 +178,19 @@ class APIClient:
         """Get portfolio performance metrics."""
         return self._get(f"/portfolios/{portfolio_id}/metrics")
 
+    def get_portfolio_mtm(self, portfolio_id: str, resolution: int = 60) -> dict:
+        """
+        Get mark-to-market P&L with continuous price-based time series.
+        
+        Args:
+            portfolio_id: Portfolio ID
+            resolution: Time resolution in minutes (default: 60 = hourly)
+            
+        Returns:
+            Mark-to-market data with P&L series based on market prices
+        """
+        return self._get(f"/portfolios/{portfolio_id}/mtm", {"resolution": resolution})
+
     def get_trades(self, portfolio_id: str, page: int = 1, page_size: int = 50) -> dict:
         """Get trade history for a portfolio."""
         return self._get(f"/portfolios/{portfolio_id}/trades", {"page": page, "page_size": page_size})
