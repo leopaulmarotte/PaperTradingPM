@@ -208,6 +208,13 @@ def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
     return fig
 
 
+
+def _display_orderbook(market:dict):
+    return 'none yet'
+
+
+
+
 def _render_position_panel(api: APIClient, market: dict):
     """Render position panel for the current market if user has a position."""
     # Get all user portfolios
@@ -514,6 +521,7 @@ def _render_market_detail(api: APIClient):
     
     market = resp["data"]
     name = _display_name(market)
+    st.write(market)
     is_closed = market.get("closed", False)
     
     # Market header
