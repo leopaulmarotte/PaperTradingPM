@@ -4,7 +4,7 @@ Trading View - Professional card-based market explorer with Plotly charts
 import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
-
+import pandas as pd
 from config import API_URL
 from utils.api import APIClient
 from utils.styles import COLORS
@@ -15,6 +15,16 @@ from utils.formatters import (
     format_date,
     time_until_end,
 )
+
+import time
+
+
+
+
+
+
+
+
 
 
 def _init_state():
@@ -44,6 +54,11 @@ def _display_name(market: dict) -> str:
     if slug:
         return slug.replace("-", " ").replace("_", " ").title()
     return "Marché"
+
+
+
+
+
 
 
 def _create_market_card(market: dict, idx: int) -> str:
@@ -209,8 +224,58 @@ def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
 
 
 
-def _display_orderbook(market:dict):
-    return 'none yet'
+
+
+def display_orderbook_ui(orderbook: dict):
+    """Affiche l'orderbook YES/NO côte à côte sous forme de DataFrames."""
+
+    if not orderbook or len(orderbook) < 2:
+        st.warning("Orderbook incomplet ou indisponible.")
+        return
+
+    # Récupère les clés dans l'ordre
+    yes_key, no_key = list(orderbook.keys())[:2]
+    yes_data = orderbook[yes_key]
+    no_data = orderbook[no_key]
+
+    bids_yes = yes_data.get("bids", {})
+    asks_yes = yes_data.get("asks", {})
+
+    bids_no = no_data.get("bids", {})
+    asks_no = no_data.get("asks", {})
+
+    # Fonction utilitaire pour créer un DataFrame
+    def create_df(prices_dict, reverse=False):
+        df = pd.DataFrame(prices_dict.items(), columns=["Price", "Shares"])
+        df["Price"] = df["Price"].astype(float)
+        df["Shares"] = df["Shares"].astype(float)
+        return df.sort_values("Price", ascending=not reverse).reset_index(drop=True)
+
+    # Crée les DataFrames
+    bids_yes_df = create_df(bids_yes, reverse=True)
+    asks_yes_df = create_df(asks_yes, reverse=True)
+
+    bids_no_df = create_df(bids_no, reverse=True)
+    asks_no_df = create_df(asks_no, reverse=True)
+
+    # Affiche côte à côte
+    col_yes, col_no = st.columns(2)
+
+    with col_yes:
+        st.markdown("### ✅ YES")
+        st.markdown("**Asks (Vendeurs)**")
+        st.dataframe(asks_yes_df, use_container_width=True)
+        st.markdown("**Bids (Acheteurs)**")
+        st.dataframe(bids_yes_df, use_container_width=True)
+
+    with col_no:
+        st.markdown("### ❌ NO")
+        st.markdown("**Asks (Vendeurs)**")
+        st.dataframe(asks_no_df, use_container_width=True)
+        st.markdown("**Bids (Acheteurs)**")
+        st.dataframe(bids_no_df, use_container_width=True)
+
+
 
 
 
@@ -492,37 +557,79 @@ def _render_market_detail(api: APIClient):
         st.warning("Aucun marché sélectionné.")
         return
     
-    # Back button
+
+
+
+    # if st.button("← Retour aux marchés"):
+    #     # Stop stream si actif
+    #     if st.session_state.get("active_market_slug") == slug and st.session_state.get("market_stream_started"):
+    #         api.stop_stream()
+    #         st.session_state["market_stream_started"] = False
+    #         st.session_state["active_market_slug"] = None
+        
+    #     # Clear prefill state
+    #     for key in ["prefill_action", "prefill_outcome", "prefill_max_qty", "prefill_use_max", "prefill_portfolio_id"]:
+    #         st.session_state.pop(key, None)
+        
+    #     st.session_state.trading_view = "list"
+    #     st.session_state.selected_market = None
+    #     st.rerun()
+    #     return
+
+
     if st.button("← Retour aux marchés"):
-        st.session_state.trading_view = "list"
-        # Clear prefill state when going back
+        # Stop stream si actif
+        if st.session_state.get("active_market_slug") == slug and st.session_state.get("market_stream_started"):
+            api.stop_stream()
+            st.session_state["market_stream_started"] = False
+            st.session_state["active_market_slug"] = None
+        
+        # Clear prefill state
         for key in ["prefill_action", "prefill_outcome", "prefill_max_qty", "prefill_use_max", "prefill_portfolio_id"]:
             st.session_state.pop(key, None)
-        st.rerun()
-    
-    # Fetch market data - try by slug first, then by condition_id
-    with st.spinner("Chargement..."):
-        resp = api.get_market(slug)
         
-        # If slug lookup fails, try by condition_id
+        # Vider l'orderbook
+        st.session_state.pop("orderbook", None)
+        
+        st.session_state.trading_view = "list"
+        st.session_state.selected_market = None
+        st.rerun()
+        return
+
+
+
+    # ===============================
+    # Fetch market data
+    # ===============================
+    with st.spinner("Chargement du marché..."):
+        resp = api.get_market(slug)
         if resp["status"] != 200:
             resp = api.get_market_by_condition(slug)
     
     if resp["status"] != 200:
-        err = resp.get("error") or resp.get("data", {}).get("detail", "Impossible de charger le marché")
-        st.error(f"Marché non trouvé: {slug}")
-        st.error(err)
-        # Offer to go back
-        if st.button("Retourner à la liste des marchés"):
-            st.session_state.trading_view = "list"
-            st.session_state.selected_market = None
-            st.rerun()
+        st.error(f"Impossible de charger le marché: {slug}")
         return
-    
+
     market = resp["data"]
     name = _display_name(market)
-    st.write(market)
+    asset_ids = market.get("clob_token_ids", [])
+    # st.write("Asset IDs:", asset_ids)
     is_closed = market.get("closed", False)
+
+    # ===============================
+    # Manage stream
+    # ===============================
+    # Si le marché streamé est différent ou si aucun stream n'est actif, restart stream
+    if st.session_state.get("active_market_slug") != slug or not st.session_state.get("market_stream_started"):
+        # Stop ancien stream
+        if st.session_state.get("market_stream_started"):
+            api.stop_stream()
+        
+        # Start stream pour ce marché
+        api.start_stream(asset_ids)
+        st.session_state["market_stream_started"] = True
+        st.session_state["active_market_slug"] = slug
+
     
     # Market header
     st.markdown(f"## {name}")
@@ -601,6 +708,12 @@ def _render_market_detail(api: APIClient):
         # Display position if user has one on this market
         _render_position_panel(api, market)
     
+
+    orderbook_container = st.empty()
+
+    # Boucle de rafraîchissement de l'orderbook toutes les 2s
+
+
     with col_trade:
         st.markdown("### 🎯 Passer un ordre")
         
@@ -608,6 +721,39 @@ def _render_market_detail(api: APIClient):
             st.warning("Ce marché est clôturé. Le trading n'est plus possible.")
         else:
             _render_trade_form(api, market)
+
+
+    # compteur = 0
+    # while True:
+    #     compteur+=1
+    #     orderbook = api.get_orderbook().get('data', {}).get('messages', {})
+    #     with orderbook_container.container():
+    #         display_orderbook_ui(orderbook)
+    # #         # st.write(api.get_last_orderbookchange())
+    # #     # Stop loop si on change de marché
+    #     if st.session_state.get("selected_market") != slug:
+    #         break
+
+    #     time.sleep(5)
+
+
+# Initialisation si nécessaire
+    if "orderbook" not in st.session_state:
+        st.session_state.orderbook = api.get_orderbook().get('data', {}).get('messages', {})
+
+    # Bouton de rafraîchissement
+    if st.button("🔄 Rafraîchir l'orderbook"):
+        st.session_state.orderbook = api.get_orderbook().get('data', {}).get('messages', {})
+
+    # Conteneur pour afficher
+    orderbook_container = st.empty()
+    with orderbook_container.container():
+        display_orderbook_ui(st.session_state.orderbook)
+
+
+
+
+
 
 
 def _render_trade_form(api: APIClient, market: dict):

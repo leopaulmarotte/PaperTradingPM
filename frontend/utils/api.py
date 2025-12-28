@@ -169,10 +169,16 @@ class APIClient:
             "name": name,
             "initial_balance": initial_balance,
         })
+
+
+
     
     def get_portfolio(self, portfolio_id: str) -> dict:
         """Get portfolio details."""
         return self._get(f"/portfolios/{portfolio_id}")
+
+
+
 
     def get_portfolio_metrics(self, portfolio_id: str) -> dict:
         """Get portfolio performance metrics."""
@@ -236,3 +242,17 @@ class APIClient:
             data["notes"] = notes
         return self._post(f"/portfolios/{portfolio_id}/trades", data)
 
+
+    def start_stream(self, asset_id: list) -> dict:
+        asset_id_string = ",".join(asset_id)
+        return self._post(f"/market-stream/start/{asset_id_string}", {})
+
+    def stop_stream(self) -> dict:
+        return self._post("/market-stream/stop", {})
+
+    def get_orderbook(self) -> dict:
+        return self._get("/market-stream/orderbook")
+    
+
+    def get_last_orderbookchange(self) -> dict:
+        return self._get("/market-stream/latest")
