@@ -153,7 +153,11 @@ def _build_trades_dataframe(trades: List[Dict]) -> pd.DataFrame:
 		try:
 			# Parse datetime
 			dt = _parse_datetime(trade.get("created_at"))
-			date_str, time_str = _format_datetime(dt)
+			# Fusionne date et heure en un seul timestamp
+			if dt:
+				timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+			else:
+				timestamp_str = ""
 			
 			# Get fields
 			portfolio = trade.get("portfolio_name", "N/A")
@@ -168,8 +172,7 @@ def _build_trades_dataframe(trades: List[Dict]) -> pd.DataFrame:
 			total = quantity * price
 			
 			rows.append({
-				"Date": date_str,
-				"Heure": time_str,
+				"Timestamp": timestamp_str,
 				"Portefeuille": portfolio,
 				"Marché": market_name,
 				"Action": action,
@@ -245,8 +248,7 @@ def render():
 			
 			# Use columns for better display control
 			col_config = {
-				"Date": st.column_config.TextColumn(width="small"),
-				"Heure": st.column_config.TextColumn(width="small"),
+				"Timestamp": st.column_config.TextColumn(width="medium"),
 				"Portefeuille": st.column_config.TextColumn(width="small"),
 				"Marché": st.column_config.TextColumn(width="medium"),
 				"Action": st.column_config.TextColumn(width="small"),

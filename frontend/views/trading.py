@@ -110,10 +110,9 @@ def _create_market_card(market: dict, idx: int) -> str:
     """
 
 
-def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
-    """Create a Plotly price history chart."""
+def _create_price_chart(price_history: list, market_name: str, is_no: bool = False) -> go.Figure:
+    """Create a Plotly price history chart for YES or NO token only."""
     if not price_history:
-        # Return empty chart with message
         fig = go.Figure()
         fig.add_annotation(
             text="Pas de données de prix disponibles",
@@ -127,12 +126,9 @@ def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
             height=300
         )
         return fig
-    
-    # Extract data
+
     timestamps = []
-    yes_prices = []
-    no_prices = []
-    
+    prices = []
     for point in price_history:
         ts = point.get("timestamp") or point.get("t")
         if ts:
@@ -144,46 +140,29 @@ def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
                 timestamps.append(dt)
             except:
                 continue
-        
-        # Try different price formats
-        yes_p = point.get("yes_price") or point.get("p") or point.get("price")
-        if yes_p is not None:
+        # Toujours utiliser 'price' (ou 'p'), car l'API retourne l'historique du token demandé
+        p = point.get("price") or point.get("p")
+        if p is not None:
             try:
-                yes_prices.append(float(yes_p) * 100)
+                prices.append(float(p) * 100)
             except:
-                yes_prices.append(None)
-        
-        no_p = point.get("no_price")
-        if no_p is not None:
-            try:
-                no_prices.append(float(no_p) * 100)
-            except:
-                no_prices.append(None)
-    
+                prices.append(None)
+
     fig = go.Figure()
-    
-    # YES price line
-    if yes_prices and timestamps:
+    if prices and timestamps:
+        color = COLORS["accent_red"] if is_no else COLORS["accent_green"]
+        fill_color = 'rgba(248, 81, 73, 0.1)' if is_no else 'rgba(63, 185, 80, 0.1)'
+        token_name = 'NO' if is_no else 'YES'
         fig.add_trace(go.Scatter(
-            x=timestamps[:len(yes_prices)],
-            y=yes_prices,
+            x=timestamps[:len(prices)],
+            y=prices,
             mode='lines',
-            name='YES',
-            line=dict(color=COLORS["accent_green"], width=2),
+            name=token_name,
+            line=dict(color=color, width=2),
             fill='tozeroy',
-            fillcolor=f'rgba(63, 185, 80, 0.1)'
+            fillcolor=fill_color
         ))
-    
-    # NO price line (if available)
-    if no_prices and timestamps and len([p for p in no_prices if p is not None]) > 0:
-        fig.add_trace(go.Scatter(
-            x=timestamps[:len(no_prices)],
-            y=no_prices,
-            mode='lines',
-            name='NO',
-            line=dict(color=COLORS["accent_red"], width=2),
-        ))
-    
+
     fig.update_layout(
         title=None,
         paper_bgcolor=COLORS["bg_secondary"],
@@ -212,7 +191,6 @@ def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
         ),
         hovermode='x unified'
     )
-    
     return fig
 
 
@@ -690,36 +668,54 @@ def _render_market_detail(api: APIClient):
     
     with col_chart:
         # Current prices
-        st.markdown("### 📊 Prix actuels")
+        st.markdown("### 📊 Dernier prix traité")
         outcomes = market.get("outcomes") or []
-        prices = market.get("outcome_prices") or []
-        
-        if outcomes and prices:
-            price_cols = st.columns(len(outcomes))
-            for i, (outcome, price) in enumerate(zip(outcomes, prices)):
-                with price_cols[i]:
-                    try:
-                        price_pct = float(price) * 100
-                        color = COLORS["accent_green"] if outcome.upper() == "YES" else COLORS["accent_red"]
-                        st.markdown(
-                            f"""
-                            <div style='background: {COLORS['bg_secondary']}; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid {COLORS['border']};'>
-                                <div style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 8px;'>{outcome}</div>
-                                <div style='color: {color}; font-size: 32px; font-weight: bold;'>{price_pct:.1f}%</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-                    except:
+        slug = market.get("slug")
+        price_cols = st.columns(len(outcomes)) if outcomes else []
+        for i, outcome in enumerate(outcomes):
+            with price_cols[i]:
+                # Récupérer l'historique pour chaque outcome
+                price_resp = api.get_price_history(slug, outcome_index=i)
+                if price_resp["status"] == 200:
+                    price_data = price_resp.get("data") or {}
+                    price_history = price_data.get("history", [])
+                    if price_history:
+                        last_point = price_history[-1]
+                        p = last_point.get("price") or last_point.get("p")
+                        try:
+                            price_pct = float(p) * 100
+                            color = COLORS["accent_green"] if outcome.upper() == "YES" else COLORS["accent_red"]
+                            st.markdown(
+                                f"""
+                                <div style='background: {COLORS['bg_secondary']}; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid {COLORS['border']};'>
+                                    <div style='color: {COLORS['text_secondary']}; font-size: 14px; margin-bottom: 8px;'>{outcome}</div>
+                                    <div style='color: {color}; font-size: 32px; font-weight: bold;'>{price_pct:.1f}%</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                        except:
+                            st.write(f"{outcome}: —")
+                    else:
                         st.write(f"{outcome}: —")
+                else:
+                    st.write(f"{outcome}: —")
         
-        # Price history chart
+        # Price history chart - synchronisé avec le token sélectionné dans le formulaire d'ordre
         st.markdown("### 📈 Historique des prix")
-        price_resp = api.get_price_history(slug)
+        selected_token = st.session_state.get("order_token", outcomes[0] if outcomes else "Yes")
+        chart_outcome_index = 0
+        for i, o in enumerate(outcomes):
+            if o == selected_token:
+                chart_outcome_index = i
+                break
+        is_no_token = selected_token.upper() in ["NO", "NON"] if selected_token else False
+        price_resp = api.get_price_history(slug, outcome_index=chart_outcome_index)
         if price_resp["status"] == 200:
             price_data = price_resp.get("data") or {}
             price_history = price_data.get("history", [])
-            fig = _create_price_chart(price_history, name)
+            chart_label = f"{name} ({selected_token})" if selected_token else name
+            fig = _create_price_chart(price_history, chart_label, is_no=is_no_token)
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         else:
             st.info("Historique des prix non disponible")

@@ -563,19 +563,7 @@ def render():
                                     perf_sign = ""
                                     perf_class = ""
                                 
-                                # Portfolio summary with total value and performance
-                                st.markdown(f"""
-                                <div class="portfolio-summary">
-                                    <div class="summary-card">
-                                        <div class="summary-label">Valeur Totale</div>
-                                        <div class="summary-value">${total_value:,.2f}</div>
-                                    </div>
-                                    <div class="summary-card {perf_class}">
-                                        <div class="summary-label">Performance Globale</div>
-                                        <div class="summary-value">{perf_sign}{global_perf:.1f}%</div>
-                                    </div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                # (Suppression de l'affichage de la valeur totale et de la performance globale)
                             else:
                                 st.info("Pas encore de positions.")
                         else:
