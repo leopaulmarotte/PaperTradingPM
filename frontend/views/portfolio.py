@@ -1,7 +1,14 @@
-import streamlit as st
 
+
+import streamlit as st
 from config import API_URL
 from utils.api import APIClient
+from utils.design_html import (
+    render_portfolio_card, 
+    render_position_card,
+    inject_portfolio_css,
+    inject_position_css
+)
 
 
 def render():
@@ -45,87 +52,7 @@ def render():
             portfolios = list(portfolios.values())
         if portfolios:
             # CSS for portfolio cards
-            st.markdown("""
-            <style>
-            .portfolio-card {
-                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-                border-radius: 16px;
-                padding: 24px;
-                margin-bottom: 20px;
-                border: 1px solid rgba(99, 102, 241, 0.2);
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            }
-            .portfolio-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-            }
-            .portfolio-name {
-                font-size: 1.4rem;
-                font-weight: 700;
-                color: #ffffff;
-                margin: 0;
-            }
-            .portfolio-id {
-                font-size: 0.75rem;
-                color: #888;
-                margin-top: 4px;
-            }
-            .portfolio-metrics {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 16px;
-            }
-            .metric-box {
-                background: rgba(255, 255, 255, 0.03);
-                border-radius: 12px;
-                padding: 16px;
-                text-align: center;
-                border: 1px solid rgba(255, 255, 255, 0.05);
-            }
-            .metric-label {
-                font-size: 0.75rem;
-                color: #888;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-bottom: 6px;
-            }
-            .metric-value {
-                font-size: 1.3rem;
-                font-weight: 700;
-                color: #fff;
-            }
-            .metric-value.positive {
-                color: #22c55e;
-            }
-            .metric-value.negative {
-                color: #ef4444;
-            }
-            .metric-value.neutral {
-                color: #6366f1;
-            }
-            .perf-badge {
-                display: inline-block;
-                padding: 4px 12px;
-                border-radius: 20px;
-                font-size: 0.85rem;
-                font-weight: 600;
-            }
-            .perf-badge.positive {
-                background: rgba(34, 197, 94, 0.15);
-                color: #22c55e;
-            }
-            .perf-badge.negative {
-                background: rgba(239, 68, 68, 0.15);
-                color: #ef4444;
-            }
-            .perf-badge.neutral {
-                background: rgba(99, 102, 241, 0.15);
-                color: #6366f1;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+            inject_portfolio_css()
             
             for p in portfolios:
                 name = p.get("name", "Sans nom")
@@ -204,35 +131,7 @@ def render():
                 perf_sign = "+" if performance > 0 else ""
                 
                 # Render portfolio card
-                st.markdown(f"""
-                <div class="portfolio-card">
-                    <div class="portfolio-header">
-                        <div>
-                            <div class="portfolio-name">{name}</div>
-                            <div class="portfolio-id">ID: {pid}</div>
-                        </div>
-                        <div class="perf-badge {perf_class}">{perf_sign}{performance:.2f}%</div>
-                    </div>
-                    <div class="portfolio-metrics">
-                        <div class="metric-box">
-                            <div class="metric-label">Valeur Totale</div>
-                            <div class="metric-value neutral">${total_value:,.2f}</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="metric-label">Cash Disponible</div>
-                            <div class="metric-value">${cash_balance:,.2f}</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="metric-label">En Position</div>
-                            <div class="metric-value">${total_exposure:,.2f}</div>
-                        </div>
-                        <div class="metric-box">
-                            <div class="metric-label">P&L</div>
-                            <div class="metric-value {perf_class}">{perf_sign}${total_value - initial_balance:,.2f}</div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                render_portfolio_card(name, pid, performance, perf_class, perf_sign, total_value, cash_balance, total_exposure, initial_balance)
                 
                 # Action buttons
                 col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
@@ -388,93 +287,7 @@ def render():
                             
                             if positions_data:
                                 # CSS for position cards
-                                st.markdown("""
-                                <style>
-                                .position-card {
-                                    background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-                                    border-radius: 12px;
-                                    padding: 20px;
-                                    margin-bottom: 15px;
-                                    border-left: 4px solid #6366f1;
-                                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-                                }
-                                .position-header {
-                                    display: flex;
-                                    justify-content: space-between;
-                                    align-items: flex-start;
-                                    margin-bottom: 15px;
-                                }
-                                .position-market {
-                                    font-size: 14px;
-                                    font-weight: 600;
-                                    color: #e0e0e0;
-                                    max-width: 300px;
-                                    word-wrap: break-word;
-                                }
-                                .position-outcome {
-                                    display: inline-block;
-                                    background: #6366f1;
-                                    color: white;
-                                    padding: 4px 12px;
-                                    border-radius: 20px;
-                                    font-size: 12px;
-                                    font-weight: 500;
-                                }
-                                .position-metrics {
-                                    display: grid;
-                                    grid-template-columns: repeat(5, 1fr);
-                                    gap: 15px;
-                                }
-                                .metric-box {
-                                    text-align: center;
-                                    padding: 10px;
-                                    background: rgba(255,255,255,0.05);
-                                    border-radius: 8px;
-                                }
-                                .metric-label {
-                                    font-size: 11px;
-                                    color: #888;
-                                    text-transform: uppercase;
-                                    letter-spacing: 0.5px;
-                                }
-                                .metric-value {
-                                    font-size: 18px;
-                                    font-weight: 700;
-                                    color: #fff;
-                                    margin-top: 4px;
-                                }
-                                .perf-positive { color: #22c55e !important; }
-                                .perf-negative { color: #ef4444 !important; }
-                                .portfolio-summary {
-                                    display: flex;
-                                    gap: 20px;
-                                    margin-top: 20px;
-                                }
-                                .summary-card {
-                                    flex: 1;
-                                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                                    border-radius: 10px;
-                                    padding: 15px 25px;
-                                    text-align: center;
-                                }
-                                .summary-card.perf-positive-bg {
-                                    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-                                }
-                                .summary-card.perf-negative-bg {
-                                    background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-                                }
-                                .summary-label {
-                                    font-size: 12px;
-                                    color: rgba(255,255,255,0.8);
-                                    text-transform: uppercase;
-                                }
-                                .summary-value {
-                                    font-size: 28px;
-                                    font-weight: 700;
-                                    color: white;
-                                }
-                                </style>
-                                """, unsafe_allow_html=True)
+                                inject_position_css()
                                 
                                 for pos in positions_data:
                                     perf_class = "perf-positive" if pos["performance"] >= 0 else "perf-negative"
@@ -484,36 +297,7 @@ def render():
                                     if len(market_display) > 60:
                                         market_display = market_display[:57] + "..."
                                     
-                                    st.markdown(f"""
-                                    <div class="position-card">
-                                        <div class="position-header">
-                                            <div class="position-market">{market_display}</div>
-                                            <span class="position-outcome">{pos["outcome"]}</span>
-                                        </div>
-                                        <div class="position-metrics">
-                                            <div class="metric-box">
-                                                <div class="metric-label">Quantité</div>
-                                                <div class="metric-value">{pos["qty"]:.2f}</div>
-                                            </div>
-                                            <div class="metric-box">
-                                                <div class="metric-label">Prix Actuel</div>
-                                                <div class="metric-value">${pos["current_price"]:.4f}</div>
-                                            </div>
-                                            <div class="metric-box">
-                                                <div class="metric-label">Coût</div>
-                                                <div class="metric-value">${pos["cost_basis"]:.2f}</div>
-                                            </div>
-                                            <div class="metric-box">
-                                                <div class="metric-label">Valeur</div>
-                                                <div class="metric-value">${pos["current_value"]:.2f}</div>
-                                            </div>
-                                            <div class="metric-box">
-                                                <div class="metric-label">Performance</div>
-                                                <div class="metric-value {perf_class}">{perf_sign}{pos["performance"]:.1f}%</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    """, unsafe_allow_html=True)
+                                    render_position_card(pos, pid)
                                     
                                     # Buttons row
                                     btn_col1, btn_col2, btn_spacer = st.columns([1, 1, 4])

@@ -48,6 +48,13 @@ def format_date(date_str: str, fmt: str = "%d/%m/%Y") -> str:
         return dt.strftime(fmt)
     except Exception:
         return "-"
+    
+def _format_datetime(dt: Optional[datetime]) -> str:
+	"""Format datetime into separate date and time strings."""
+	if not dt:
+		return "", ""
+	return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M:%S")
+
 
 
 def format_datetime_parts(date_str: str) -> Tuple[str, str]:
@@ -102,3 +109,21 @@ def get_pnl_color(value: float) -> str:
     elif value < 0:
         return "#f85149"  # accent_red
     return "#f0f6fc"  # text_primary
+
+
+def _normalize_outcome(name: str) -> str:
+    """Normalize outcome name for matching positions."""
+    try:
+        return (name or "").strip().lower()
+    except Exception:
+        return ""
+    
+def _display_name(market: dict) -> str:
+    """Return a readable market name."""
+    name = market.get("question") or market.get("name") or market.get("title")
+    if name:
+        return name
+    slug = market.get("slug") or ""
+    if slug:
+        return slug.replace("-", " ").replace("_", " ").title()
+    return "Marché"

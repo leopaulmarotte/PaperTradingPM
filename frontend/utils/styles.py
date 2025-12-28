@@ -1,3 +1,4 @@
+import streamlit as st
 """
 Global styles and CSS for the professional trading UI.
 Dark theme inspired by Polymarket.
@@ -119,5 +120,4 @@ def get_global_css() -> str:
 
 def inject_styles():
     """Inject global styles into the Streamlit app."""
-    import streamlit as st
     st.markdown(get_global_css(), unsafe_allow_html=True)

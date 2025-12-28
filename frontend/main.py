@@ -2,21 +2,10 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 from views import login, trading, metrics, history, account, portfolio
 from utils.styles import inject_styles
+from utils.helper import init_session
 from config import APP_NAME
 
-def init_session():
-    defaults = {
-        "is_authenticated": False,
-        "user_id": None,
-        "token": None,
-        "selected_market": None,
-        "trades_df": None,
-        "nav_page": "Trading",
-        "nav_override": None,
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+
 
 def main():
     st.set_page_config(page_title=APP_NAME, layout="wide")
