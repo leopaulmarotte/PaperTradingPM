@@ -125,6 +125,8 @@ class PositionPnLSeries:
     unrealized_pnl: float
     realized_pnl: float
     total_pnl: float
+    # First trade timestamp for this position
+    first_trade_at: Optional[datetime] = None
     # Time series data
     timestamps: List[datetime] = field(default_factory=list)
     prices: List[float] = field(default_factory=list)
@@ -348,6 +350,16 @@ class MarkToMarketService:
         pnl_series: List[PnLSnapshot] = []
         position_series: Dict[Tuple[str, str], PositionPnLSeries] = {}
         
+        # Calculate first trade timestamp for each position
+        first_trade_timestamps: Dict[Tuple[str, str], datetime] = {}
+        for trade in trades:
+            key = (trade["market_id"], trade["outcome"])
+            ts = trade["trade_timestamp"]
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if key not in first_trade_timestamps or ts < first_trade_timestamps[key]:
+                first_trade_timestamps[key] = ts
+        
         # Initialize position series
         for key in position_keys:
             market_id, outcome = key
@@ -361,6 +373,7 @@ class MarkToMarketService:
                 unrealized_pnl=0.0,
                 realized_pnl=0.0,
                 total_pnl=0.0,
+                first_trade_at=first_trade_timestamps.get(key),
             )
         
         # Build price lookup for each position (timestamp -> price)
@@ -368,8 +381,13 @@ class MarkToMarketService:
         for key, prices in price_histories.items():
             price_lookup[key] = {ts: p for ts, p in prices}
         
-        # Last known prices for interpolation
+        # Last known prices for interpolation - initialize with first trade prices
         last_known_prices: Dict[Tuple[str, str], float] = {}
+        for trade in trades:
+            key = (trade["market_id"], trade["outcome"])
+            # Use the first trade price as initial known price
+            if key not in last_known_prices:
+                last_known_prices[key] = trade["price"]
         
         for ts in sorted_timestamps:
             # Apply any trades at this timestamp
@@ -402,11 +420,26 @@ class MarkToMarketService:
             total_unrealized = 0.0
             total_realized = sum(s.realized_pnl for s in position_states.values())
             
+            # Check if this is the last timestamp (now) - use live market prices
+            is_final_timestamp = (ts == sorted_timestamps[-1])
+            
             for key, state in position_states.items():
-                # Get price at this timestamp
-                price = self._get_price_at_time(
-                    ts, price_lookup.get(key, {}), last_known_prices.get(key, 0.0)
-                )
+                market_id, outcome = key
+                
+                # For final timestamp, use live market price from outcome_prices
+                if is_final_timestamp:
+                    live_price = await self._get_current_market_price(market_id, outcome)
+                    if live_price is not None:
+                        price = live_price
+                    else:
+                        price = self._get_price_at_time(
+                            ts, price_lookup.get(key, {}), last_known_prices.get(key, 0.0)
+                        )
+                else:
+                    # Get price at this timestamp from history
+                    price = self._get_price_at_time(
+                        ts, price_lookup.get(key, {}), last_known_prices.get(key, 0.0)
+                    )
                 last_known_prices[key] = price
                 
                 if state.quantity > 0:
@@ -573,16 +606,18 @@ class MarkToMarketService:
         cached = await self.price_history_col.find_one({"_id": cache_key})
         
         if not cached or not cached.get("history"):
-            # Try to fetch fresh
+            # Try to fetch fresh with high fidelity (1 minute intervals)
             try:
                 api = await get_polymarket_api()
-                history = await api.get_price_history(token_id)
+                history = await api.get_price_history(token_id, fidelity=1)
                 if history:
                     # Cache it
                     await self.price_history_col.update_one(
                         {"_id": cache_key},
                         {
                             "$set": {
+                                "slug": slug,
+                                "token_id": token_id,
                                 "history": history,
                                 "fetched_at": datetime.now(timezone.utc),
                             }

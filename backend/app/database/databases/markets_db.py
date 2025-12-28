@@ -35,9 +35,9 @@ class Collections:
             {"keys": [("question", "text")]},  # Text index for search
         ],
         "price_history": [
-            {"keys": [("token_id", 1)], "unique": True},
-            {"keys": [("condition_id", 1)]},
-            {"keys": [("last_updated_at", 1)]},
+            {"keys": [("token_id", 1)]},  # Non-unique, for querying
+            {"keys": [("slug", 1)]},
+            {"keys": [("fetched_at", 1)]},
         ],
         "open_interest": [
             {"keys": [("condition_id", 1)], "unique": True},

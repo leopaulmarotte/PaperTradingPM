@@ -344,13 +344,16 @@ def render():
                                 avg_price = 0 if qty == 0 else agg["notional"] / (agg["qty"] if agg["qty"] else 1)
                                 cost_basis = agg.get("cost", 0)
                                 
-                                # Get current market price
+                                # Get current market price and question
                                 current_price = avg_price
+                                market_question = market  # Default to slug
                                 market_resp = api.get_market(market)
                                 if not (isinstance(market_resp, dict) and market_resp.get("status") == 200):
                                     market_resp = api.get_market_by_condition(market)
                                 if isinstance(market_resp, dict) and market_resp.get("status") == 200:
                                     mdata = market_resp.get("data", {})
+                                    # Get readable market question
+                                    market_question = mdata.get("question") or market
                                     outcomes_list = mdata.get("outcomes") or []
                                     prices = mdata.get("outcome_prices") or []
                                     norm_out = (outcome or "").strip().lower()
@@ -374,6 +377,7 @@ def render():
                                 
                                 positions_data.append({
                                     "market": market,
+                                    "market_question": market_question,
                                     "outcome": outcome,
                                     "qty": qty,
                                     "current_price": current_price,
@@ -475,11 +479,15 @@ def render():
                                 for pos in positions_data:
                                     perf_class = "perf-positive" if pos["performance"] >= 0 else "perf-negative"
                                     perf_sign = "+" if pos["performance"] >= 0 else ""
+                                    # Truncate market question if too long
+                                    market_display = pos.get("market_question", pos["market"])
+                                    if len(market_display) > 60:
+                                        market_display = market_display[:57] + "..."
                                     
                                     st.markdown(f"""
                                     <div class="position-card">
                                         <div class="position-header">
-                                            <div class="position-market">{pos["market"]}</div>
+                                            <div class="position-market">{market_display}</div>
                                             <span class="position-outcome">{pos["outcome"]}</span>
                                         </div>
                                         <div class="position-metrics">

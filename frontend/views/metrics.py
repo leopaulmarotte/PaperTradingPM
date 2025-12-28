@@ -87,7 +87,22 @@ def _create_portfolio_pnl_chart(pnl_series: List[Dict]) -> go.Figure:
     # Zero line
     fig.add_hline(y=0, line_dash="dash", line_color=COLORS["border"], opacity=0.7)
     
-    # Layout
+    # Find first non-zero P&L to trim empty beginning
+    first_nonzero_idx = 0
+    for i, pnl in enumerate(pnl_values):
+        if pnl != 0:
+            first_nonzero_idx = max(0, i - 1)  # Keep one point before
+            break
+    
+    # Trim timestamps and values if there's empty space at the beginning
+    if first_nonzero_idx > 0:
+        timestamps = timestamps[first_nonzero_idx:]
+        pnl_values = pnl_values[first_nonzero_idx:]
+        # Update the trace data
+        fig.data[0].x = timestamps
+        fig.data[0].y = pnl_values
+    
+    # Layout with range set to data bounds
     fig.update_layout(
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor=COLORS["bg_secondary"],
@@ -101,6 +116,7 @@ def _create_portfolio_pnl_chart(pnl_series: List[Dict]) -> go.Figure:
             gridcolor='rgba(255, 255, 255, 0.05)',
             tickformat='%d/%m\n%H:%M',
             title=dict(text="Date", font=dict(size=12)),
+            range=[timestamps[0], timestamps[-1]] if timestamps else None,
         ),
         yaxis=dict(
             showgrid=True,
@@ -130,6 +146,7 @@ def _create_position_pnl_chart(position: Dict) -> go.Figure:
     
     timestamps = position.get("timestamps", [])
     pnl_values = position.get("total_pnls", [])
+    first_trade_at = position.get("first_trade_at")
     
     if not timestamps or not pnl_values:
         fig.add_annotation(
@@ -165,6 +182,17 @@ def _create_position_pnl_chart(position: Dict) -> go.Figure:
         )
         return fig
     
+    # Parse first_trade_at for range start
+    range_start = parsed_timestamps[0]
+    if first_trade_at:
+        try:
+            if isinstance(first_trade_at, str):
+                range_start = datetime.fromisoformat(first_trade_at.replace("Z", "+00:00"))
+            else:
+                range_start = first_trade_at
+        except:
+            pass
+    
     # Determine color based on final P&L
     final_pnl = pnl_values[-1] if pnl_values else 0
     line_color = COLORS["accent_green"] if final_pnl >= 0 else COLORS["accent_red"]
@@ -185,7 +213,10 @@ def _create_position_pnl_chart(position: Dict) -> go.Figure:
     # Zero line
     fig.add_hline(y=0, line_dash="dash", line_color=COLORS["border"], opacity=0.7)
     
-    # Layout
+    # Use first_trade_at as range start, last timestamp as range end
+    last_ts = parsed_timestamps[-1] if parsed_timestamps else None
+    
+    # Layout with explicit range from first trade to now
     fig.update_layout(
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor=COLORS["bg_secondary"],
@@ -199,6 +230,7 @@ def _create_position_pnl_chart(position: Dict) -> go.Figure:
             gridcolor='rgba(255, 255, 255, 0.05)',
             tickformat='%d/%m\n%H:%M',
             title=dict(text="Date", font=dict(size=12)),
+            range=[range_start, last_ts] if range_start and last_ts else None,
         ),
         yaxis=dict(
             showgrid=True,
@@ -322,8 +354,8 @@ def render():
         key="metrics_portfolio_selector"
     )
     
-    # Use max resolution (1440 min = 1 day, maximum allowed by backend)
-    resolution = 1440
+    # Use 10 min resolution for granular P&L charts (matches Polymarket price history)
+    resolution = 10
     
     # Clear pre-selection after use
     if preselected_portfolio_id:
@@ -427,10 +459,13 @@ def render():
     st.divider()
     st.subheader("P&L par Position")
     
-    positions = mtm_data.get("positions", [])
+    all_positions = mtm_data.get("positions", [])
+    
+    # Filter to only show positions with non-zero quantity
+    positions = [p for p in all_positions if p.get("current_quantity", 0) != 0]
     
     if not positions:
-        st.info("Aucune position active ou avec historique de P&L")
+        st.info("Aucune position active (quantité > 0)")
     else:
         # Build position dropdown with P&L displayed
         position_labels = [_format_position_label(p) for p in positions]
@@ -450,6 +485,19 @@ def render():
             pos_qty = selected_position.get("current_quantity", 0)
             pos_avg_price = selected_position.get("average_entry_price", 0)
             pos_current_price = selected_position.get("current_price", 0)
+            first_trade_at = selected_position.get("first_trade_at")
+            
+            # Display opening date if available
+            if first_trade_at:
+                try:
+                    if isinstance(first_trade_at, str):
+                        from datetime import datetime
+                        first_trade_dt = datetime.fromisoformat(first_trade_at.replace("Z", "+00:00"))
+                    else:
+                        first_trade_dt = first_trade_at
+                    st.caption(f"📅 Position ouverte le {first_trade_dt.strftime('%d/%m/%Y à %H:%M')}")
+                except:
+                    pass
             
             col1, col2, col3, col4 = st.columns(4)
             with col1:

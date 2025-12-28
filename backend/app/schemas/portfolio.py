@@ -135,6 +135,7 @@ class MTMPositionSeries(BaseModel):
     unrealized_pnl: float
     realized_pnl: float
     total_pnl: float
+    first_trade_at: Optional[datetime] = Field(None, description="Timestamp of first trade for this position")
     # Time series data
     timestamps: List[datetime] = Field(default=[], description="Price timestamps")
     prices: List[float] = Field(default=[], description="Market prices over time")
@@ -212,6 +213,7 @@ class MarkToMarketResponse(BaseModel):
                 unrealized_pnl=p.unrealized_pnl,
                 realized_pnl=p.realized_pnl,
                 total_pnl=p.total_pnl,
+                first_trade_at=p.first_trade_at,
                 timestamps=p.timestamps,
                 prices=p.prices,
                 unrealized_pnls=p.unrealized_pnls,
