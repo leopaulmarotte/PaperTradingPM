@@ -20,13 +20,6 @@ import time
 
 
 
-
-
-
-
-
-
-
 def _init_state():
     """Initialize session state variables."""
     if "trading_view" not in st.session_state:
@@ -229,9 +222,32 @@ def _create_price_chart(price_history: list, market_name: str) -> go.Figure:
 def display_orderbook_ui(orderbook: dict):
     """Affiche l'orderbook YES/NO côte à côte sous forme de DataFrames."""
 
+    # if not orderbook or len(orderbook) < 2:
+    #     st.warning("Raffraichissez l'orderbook pour passer des trades.")
+    #     return
+
+
     if not orderbook or len(orderbook) < 2:
-        st.warning("Orderbook incomplet ou indisponible.")
+        st.markdown(
+            """
+            <div style="
+                background-color: #fff3cd;
+                color: #664d03;
+                border: 1px solid #ffecb5;
+                padding: 16px;
+                border-radius: 6px;
+                font-size: 20px;
+                font-weight: 600;
+                text-align: center;
+            ">
+            ⚠️ Rafraîchissez l'orderbook pour passer des trades.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
         return
+
+
 
     # Récupère les clés dans l'ordre
     yes_key, no_key = list(orderbook.keys())[:2]
@@ -245,40 +261,56 @@ def display_orderbook_ui(orderbook: dict):
     asks_no = no_data.get("asks", {})
 
     # Fonction utilitaire pour créer un DataFrame
-    def create_df(prices_dict, reverse=False):
-        df = pd.DataFrame(prices_dict.items(), columns=["Price", "Shares"])
-        df["Price"] = df["Price"].astype(float)
-        df["Shares"] = df["Shares"].astype(float)
-        return df.sort_values("Price", ascending=not reverse).reset_index(drop=True)
+    def create_df(prices_dict, reverse=False, side=""):
+        df = pd.DataFrame(prices_dict.items(), columns=[side, "Quantity"])
+        df[side] = df[side].astype(float)
+        df["Quantity"] = df["Quantity"].astype(float)
+        return df.sort_values(side, ascending=not reverse).reset_index(drop=True)
 
     # Crée les DataFrames
-    bids_yes_df = create_df(bids_yes, reverse=True)
-    asks_yes_df = create_df(asks_yes, reverse=True)
+    bids_yes_df = create_df(bids_yes, reverse=True, side = 'Bids')
+    asks_yes_df = create_df(asks_yes, reverse=True, side ='Asks')
 
-    bids_no_df = create_df(bids_no, reverse=True)
-    asks_no_df = create_df(asks_no, reverse=True)
+    bids_no_df = create_df(bids_no, reverse=True, side ='Bids')
+    asks_no_df = create_df(asks_no, reverse=True, side ='Asks')
 
-    # Hauteur par défaut pour ~5 lignes (ajuster si nécessaire)
     default_height = 180
 
-    # Affiche côte à côte
-    col_yes, col_no = st.columns(2)
+    # Render both columns within a single HTML flex row to ensure perfect vertical alignment
+    parent_height = (default_height * 2) + 6
 
-    with col_yes:
-        st.markdown("### ✅ YES")
-        st.markdown("**Asks (Vendeurs)**")
-        st.dataframe(asks_yes_df, use_container_width=True, height=default_height)
-        st.markdown("**Bids (Acheteurs)**")
-        st.dataframe(bids_yes_df, use_container_width=True, height=default_height)
+    st.markdown(
+        "<style>"
+        ".order-row{display:flex;gap:12px;}"
+        ".order-col{flex:1;}"
+        ".order-column{display:flex;flex-direction:column;gap:6px;height:" + str(parent_height) + "px;}"
+        ".order-table{padding:6px;border-radius:6px;flex:1;overflow:auto;box-sizing:border-box;}"
+        ".order-table table{width:100%;border-collapse:collapse; table-layout:fixed; word-break:break-word;}"
+        ".order-table table th, .order-table table td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);}"
+        ".order-table table th:nth-child(1), .order-table table td:nth-child(1){width:65%; text-align:left;}"
+        ".order-table table th:nth-child(2), .order-table table td:nth-child(2){width:35%; text-align:right;}"
+        ".order-table.table-asks{background:rgba(34,197,94,0.06);}"
+        ".order-table.table-asks table thead th{background:rgba(34,197,94,0.95);text-align:left; position:sticky; top:0; z-index:3;}"
+        ".order-table.table-bids{background:rgba(239,68,68,0.06);}"
+        ".order-table.table-bids table thead th{background:rgba(239,68,68,0.95);text-align:left; position:sticky; top:0; z-index:3;}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
 
-    with col_no:
-        st.markdown("### ❌ NO")
-        st.markdown("**Asks (Vendeurs)**")
-        st.dataframe(asks_no_df, use_container_width=True, height=default_height)
-        st.markdown("**Bids (Acheteurs)**")
-        st.dataframe(bids_no_df, use_container_width=True, height=default_height)
+    html = (
+        "<div class='order-row'>"
+        "<div class='order-col'>"
+        "<h3 style='margin:6px 0;'>YES</h3>"
+        f"<div class='order-column'><div class='order-table table-asks'>{asks_yes_df.to_html(index=False)}</div><div class='order-table table-bids'>{bids_yes_df.to_html(index=False)}</div></div>"
+        "</div>"
+        "<div class='order-col'>"
+        "<h3 style='margin:6px 0;'>NO</h3>"
+        f"<div class='order-column'><div class='order-table table-asks'>{asks_no_df.to_html(index=False)}</div><div class='order-table table-bids'>{bids_no_df.to_html(index=False)}</div></div>"
+        "</div>"
+        "</div>"
+    )
 
-
+    st.markdown(html, unsafe_allow_html=True)
 
 
 
@@ -704,8 +736,6 @@ def _render_market_detail(api: APIClient):
 
 
 
-
-# Initialisation si nécessaire
     if "orderbook" not in st.session_state:
         st.session_state.orderbook = api.get_orderbook().get('data', {}).get('messages', {})
 

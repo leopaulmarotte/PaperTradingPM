@@ -102,27 +102,6 @@ class PolymarketWebSocketManager:
         self.paused = False
         self._control_thread: threading.Thread | None = None
 
-    # def on_message(self, ws, message: str):
-    #     try:
-    #         payload = json.loads(message)
-    #     except:
-    #         return
-    #     items = payload if isinstance(payload, list) else [payload]
-    #     for item in items:
-    #         if not item or item.get("type") in ("ping", "pong"):
-    #             continue
-    #         try:
-    #             self.redis_client.xadd(
-    #                 REDIS_STREAM_KEY,
-    #                 {"data": json.dumps(item), "timestamp": datetime.now(timezone.utc).isoformat()},
-    #                 maxlen=STREAM_MAX_LEN, approximate=True
-    #             )
-    #             self.json_manager.add_message(item)
-    #         except Exception as e:
-    #             logger.error(f"Failed to store message: {e}")
-
-
-
 
 
     def on_message(self, ws, message: str):
@@ -148,11 +127,6 @@ class PolymarketWebSocketManager:
                 self.json_manager.update_orderbook(item, preferred_order=preferred)
             except Exception as e:
                 logger.error(f"Failed to store/update message: {e}")
-
-
-
-
-
 
 
     def on_open(self, ws):
