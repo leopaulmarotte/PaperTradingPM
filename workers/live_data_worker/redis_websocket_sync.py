@@ -26,7 +26,7 @@ class JSONStorageManager:
         if not self.redis_client.exists(redis_key):
             self.redis_client.set(redis_key, json.dumps({}))
 
-    def update_orderbook(self, message: dict):
+    def update_orderbook(self, message: dict, preferred_order: list[str] | None = None):
         """
         Update the orderbook for relevant asset_ids.
         Handles full snapshot (bids/asks) or incremental price_changes.
@@ -64,6 +64,18 @@ class JSONStorageManager:
                         data[asset_id]["bids"][price] = size
                     elif side == "SELL":
                         data[asset_id]["asks"][price] = size
+
+            # If a preferred order of asset ids was provided, reorder keys so
+            # that those asset ids appear first in the JSON object in that order.
+            if preferred_order:
+                new_data: dict = {}
+                for aid in preferred_order:
+                    if aid in data and aid not in new_data:
+                        new_data[aid] = data[aid]
+                for k in data:
+                    if k not in new_data:
+                        new_data[k] = data[k]
+                data = new_data
 
             # Save updated orderbook
             self.redis_client.set(self.redis_key, json.dumps(data))
@@ -131,8 +143,9 @@ class PolymarketWebSocketManager:
                     {"data": json.dumps(item), "timestamp": datetime.now(timezone.utc).isoformat()},
                     maxlen=STREAM_MAX_LEN, approximate=True
                 )
-                # Update JSON snapshot orderbook
-                self.json_manager.update_orderbook(item)
+                # Update JSON snapshot orderbook, passing preferred order from manager
+                preferred = self.asset_ids if self.asset_ids else None
+                self.json_manager.update_orderbook(item, preferred_order=preferred)
             except Exception as e:
                 logger.error(f"Failed to store/update message: {e}")
 

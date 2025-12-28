@@ -298,7 +298,7 @@ def _render_position_panel(api: APIClient, market: dict):
     market_slug = market.get("slug")
     outcomes = market.get("outcomes", [])
     outcome_prices = market.get("outcome_prices", [])
-    
+    st.write(outcomes)
     # Build price map
     price_map = {}
     for outcome, price_str in zip(outcomes, outcome_prices):
@@ -599,6 +599,7 @@ def _render_market_detail(api: APIClient):
     market = resp["data"]
     name = _display_name(market)
     asset_ids = market.get("clob_token_ids", [])
+    st.write(   "Asset IDs:", asset_ids)
     # st.write("Asset IDs:", asset_ids)
     is_closed = market.get("closed", False)
 
