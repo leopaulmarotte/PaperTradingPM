@@ -258,22 +258,26 @@ def display_orderbook_ui(orderbook: dict):
     bids_no_df = create_df(bids_no, reverse=True)
     asks_no_df = create_df(asks_no, reverse=True)
 
+    # Hauteur par défaut pour ~5 lignes (ajuster si nécessaire)
+    default_height = 180
+
     # Affiche côte à côte
     col_yes, col_no = st.columns(2)
 
     with col_yes:
         st.markdown("### ✅ YES")
         st.markdown("**Asks (Vendeurs)**")
-        st.dataframe(asks_yes_df, use_container_width=True)
+        st.dataframe(asks_yes_df, use_container_width=True, height=default_height)
         st.markdown("**Bids (Acheteurs)**")
-        st.dataframe(bids_yes_df, use_container_width=True)
+        st.dataframe(bids_yes_df, use_container_width=True, height=default_height)
 
     with col_no:
         st.markdown("### ❌ NO")
         st.markdown("**Asks (Vendeurs)**")
-        st.dataframe(asks_no_df, use_container_width=True)
+        st.dataframe(asks_no_df, use_container_width=True, height=default_height)
         st.markdown("**Bids (Acheteurs)**")
-        st.dataframe(bids_no_df, use_container_width=True)
+        st.dataframe(bids_no_df, use_container_width=True, height=default_height)
+
 
 
 
@@ -559,24 +563,6 @@ def _render_market_detail(api: APIClient):
     
 
 
-
-    # if st.button("← Retour aux marchés"):
-    #     # Stop stream si actif
-    #     if st.session_state.get("active_market_slug") == slug and st.session_state.get("market_stream_started"):
-    #         api.stop_stream()
-    #         st.session_state["market_stream_started"] = False
-    #         st.session_state["active_market_slug"] = None
-        
-    #     # Clear prefill state
-    #     for key in ["prefill_action", "prefill_outcome", "prefill_max_qty", "prefill_use_max", "prefill_portfolio_id"]:
-    #         st.session_state.pop(key, None)
-        
-    #     st.session_state.trading_view = "list"
-    #     st.session_state.selected_market = None
-    #     st.rerun()
-    #     return
-
-
     if st.button("← Retour aux marchés"):
         # Stop stream si actif
         if st.session_state.get("active_market_slug") == slug and st.session_state.get("market_stream_started"):
@@ -711,30 +697,11 @@ def _render_market_detail(api: APIClient):
 
     orderbook_container = st.empty()
 
-    # Boucle de rafraîchissement de l'orderbook toutes les 2s
 
 
-    with col_trade:
-        st.markdown("### 🎯 Passer un ordre")
-        
-        if is_closed:
-            st.warning("Ce marché est clôturé. Le trading n'est plus possible.")
-        else:
-            _render_trade_form(api, market)
 
 
-    # compteur = 0
-    # while True:
-    #     compteur+=1
-    #     orderbook = api.get_orderbook().get('data', {}).get('messages', {})
-    #     with orderbook_container.container():
-    #         display_orderbook_ui(orderbook)
-    # #         # st.write(api.get_last_orderbookchange())
-    # #     # Stop loop si on change de marché
-    #     if st.session_state.get("selected_market") != slug:
-    #         break
 
-    #     time.sleep(5)
 
 
 # Initialisation si nécessaire
@@ -752,6 +719,13 @@ def _render_market_detail(api: APIClient):
 
 
 
+    with col_trade:
+        st.markdown("### 🎯 Passer un ordre")
+        
+        if is_closed:
+            st.warning("Ce marché est clôturé. Le trading n'est plus possible.")
+        else:
+            _render_trade_form(api, market)
 
 
 
@@ -782,13 +756,8 @@ def _render_trade_form(api: APIClient, market: dict):
         st.warning("Données de prix non disponibles")
         return
     
-    # Create price mapping
-    price_map = {}
-    for outcome, price_str in zip(outcomes, outcome_prices):
-        try:
-            price_map[outcome] = float(price_str)
-        except:
-            price_map[outcome] = 0.5
+    # Require orderbook presence; no fallback price from market data
+    moc_price = None
     
     # Prefill handling
     prefill_portfolio_id = st.session_state.get("prefill_portfolio_id")
@@ -885,12 +854,79 @@ def _render_trade_form(api: APIClient, market: dict):
             unsafe_allow_html=True
         )
     
-    # Price display - update based on selected token
-    moc_price = price_map.get(outcome, 0.5)
-    st.markdown(
-        f"<p style='color: {COLORS['text_secondary']}; font-size: 12px;'>Prix MOC: <strong style='color: {COLORS['text_primary']};'>${moc_price:.4f}</strong></p>",
-        unsafe_allow_html=True
-    )
+    # Price display - prefer best bid/ask from the token orderbook when available
+    # moc_price is a simple fallback derived from market-provided outcome prices
+    orderbook = st.session_state.get("orderbook") or {}
+
+    def _find_token_book(ob, token_name, token_ids=None, outcomes_list=None):
+        """Find token orderbook entry.
+
+        Try token id mapping first (token_ids aligned with outcomes_list),
+        then exact name, case-insensitive name, then fallback to first key.
+        """
+        if not isinstance(ob, dict):
+            return None
+
+        # Try mapping via token_ids if provided and aligned with outcomes_list
+        if token_ids and outcomes_list:
+            try:
+                idx = list(outcomes_list).index(token_name)
+                tid = token_ids[idx]
+                if tid in ob:
+                    return ob[tid]
+            except Exception:
+                pass
+
+        # Try exact outcome name as key
+        if token_name in ob:
+            return ob[token_name]
+
+        # Case-insensitive match on keys
+        lower = token_name.lower() if token_name else ""
+        for k in ob.keys():
+            try:
+                if str(k).lower() == lower:
+                    return ob[k]
+            except Exception:
+                continue
+
+        # Try any token_id present in token_ids
+        if token_ids:
+            for tid in token_ids:
+                if tid in ob:
+                    return ob[tid]
+
+        # Fallback to first key
+        keys = list(ob.keys())
+        return ob[keys[0]] if keys else None
+
+    token_book = _find_token_book(orderbook, outcome, token_ids=market.get("clob_token_ids", []), outcomes_list=outcomes)
+
+    best_price = None
+    if token_book:
+        try:
+            # Use the local `action` (BUY/SELL) selected in the form
+            if action == "BUY":
+                asks = token_book.get("asks", {})
+                if asks:
+                    best_price = min((float(p) for p in asks.keys()))
+            else:
+                bids = token_book.get("bids", {})
+                if bids:
+                    best_price = max((float(p) for p in bids.keys()))
+        except Exception:
+            best_price = None
+
+    if best_price is None:
+        st.markdown(
+            f"<p style='color: {COLORS['text_secondary']}; font-size: 12px;'>Prix marché (best): <strong style='color: {COLORS['text_secondary']};'>— (orderbook indisponible)</strong></p>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f"<p style='color: {COLORS['text_secondary']}; font-size: 12px;'>Prix marché (best): <strong style='color: {COLORS['text_primary']};'>${best_price:.4f}</strong></p>",
+            unsafe_allow_html=True
+        )
     
     # Quantity input
     prefill_max = st.session_state.get("prefill_max_qty")
@@ -929,22 +965,67 @@ def _render_trade_form(api: APIClient, market: dict):
         key="trade_note"
     )
     
-    # Total cost - updates in real-time now!
-    total_cost = quantity * moc_price
+    # Estimate VWAP and total cost based on current orderbook levels (multi-niveaux)
+    vwap = None
+    total_cost = None
+    if token_book:
+        # build levels according to side
+        try:
+            if action == "BUY":
+                asks = token_book.get("asks", {})
+                levels_preview = sorted([(float(p), float(s)) for p, s in asks.items()], key=lambda x: x[0])
+            else:
+                bids = token_book.get("bids", {})
+                levels_preview = sorted([(float(p), float(s)) for p, s in bids.items()], key=lambda x: x[0], reverse=True)
+        except Exception:
+            levels_preview = []
+
+        # consume levels to estimate executions
+        remaining_preview = float(quantity)
+        executions_preview = []
+        for price_level, avail in levels_preview:
+            if remaining_preview <= 0:
+                break
+            take = min(remaining_preview, float(avail))
+            if take <= 0:
+                continue
+            executions_preview.append((take, price_level))
+            remaining_preview -= take
+
+        executed_qty = sum(q for q, _ in executions_preview)
+        if executed_qty > 0:
+            total_est = sum(q * p for q, p in executions_preview)
+            vwap = total_est / executed_qty
+            total_cost = total_est
+        else:
+            vwap = None
+            total_cost = None
     action_color = COLORS["accent_green"] if action == "BUY" else COLORS["accent_red"]
-    st.markdown(
-        f"<div style='background: {COLORS['bg_secondary']}; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid {COLORS['border']}; margin: 10px 0;'>"
-        f"<span style='color: {COLORS['text_secondary']};'>Total: </span>"
-        f"<span style='color: {action_color}; font-size: 20px; font-weight: bold;'>${total_cost:.2f}</span>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
+    if vwap is None:
+        st.markdown(
+            f"<div style='background: {COLORS['bg_secondary']}; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid {COLORS['border']}; margin: 10px 0;'>"
+            f"<span style='color: {COLORS['text_secondary']};'>VWAP / Total: </span>"
+            f"<span style='color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold;'>—</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f"<div style='background: {COLORS['bg_secondary']}; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid {COLORS['border']}; margin: 10px 0;'>"
+            f"<span style='color: {COLORS['text_secondary']};'>VWAP: </span>"
+            f"<span style='color: {COLORS['text_primary']}; font-size: 16px; font-weight: 700;'>${vwap:.4f}</span>"
+            f" &nbsp; <span style='color: {COLORS['text_secondary']};'>Total: </span>"
+            f"<span style='color: {action_color}; font-size: 18px; font-weight: bold;'>${total_cost:.2f}</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
     
-    # Submit button
+    # Submit button (disabled when no best price / orderbook)
     submitted = st.button(
         "🚀 Exécuter l'ordre",
         type="primary",
-        use_container_width=True
+        use_container_width=True,
+        disabled=(best_price is None)
     )
     
     # Process order submission
@@ -964,41 +1045,102 @@ def _render_trade_form(api: APIClient, market: dict):
             for error in errors:
                 st.error(error)
         else:
+            # Require presence of orderbook / best price (no fallback)
+            if best_price is None:
+                st.error("Orderbook indisponible pour ce token — impossible d'exécuter l'ordre.")
+                return
+
             # Use market slug for the trade
             trade_market_id = market_slug or position_market_id
-            
-            trade_resp = api.create_trade(
-                portfolio_id=selected_portfolio_id,
-                market_id=trade_market_id,
-                outcome=outcome,
-                side=action.lower(),
-                quantity=quantity,
-                price=moc_price,
-                notes=trade_note if trade_note else None
-            )
-            
-            if trade_resp["status"] == 201:
-                st.success("✅ Ordre exécuté!")
-                
-                # Clear prefill state
+
+            # Determine orderbook for the selected token
+            orderbook = st.session_state.get("orderbook") or {}
+
+            token_book = _find_token_book(orderbook, outcome, token_ids=market.get("clob_token_ids", []), outcomes_list=outcomes)
+
+            # Build level list (price, available) depending on side
+            levels = []
+            if token_book:
+                if action == "BUY":
+                    asks = token_book.get("asks", {})
+                    # asks expected as {price: shares}
+                    try:
+                        levels = sorted(
+                            [(float(p), float(s)) for p, s in asks.items()], key=lambda x: x[0]
+                        )
+                    except Exception:
+                        levels = []
+                else:
+                    bids = token_book.get("bids", {})
+                    try:
+                        levels = sorted(
+                            [(float(p), float(s)) for p, s in bids.items()], key=lambda x: x[0], reverse=True
+                        )
+                    except Exception:
+                        levels = []
+
+            if not levels:
+                st.error("Aucun niveau disponible dans l'orderbook pour ce token — impossible d'exécuter l'ordre.")
+                return
+
+            # Execution multi-niveaux : consomme séquentiellement les niveaux disponibles
+            executions = []
+            remaining = float(quantity)
+
+            for price_level, avail in levels:
+                if remaining <= 0:
+                    break
+                take = min(remaining, float(avail))
+                if take <= 0:
+                    continue
+                executions.append((take, price_level))
+                remaining -= take
+
+            if remaining > 0:
+                st.warning(f"Quantité partiellement remplie: {quantity - remaining:.2f} / {quantity:.2f} disponible dans l'orderbook")
+
+            # Estimate total cost for BUY to check funds
+            total_est_cost = sum(q * p for q, p in executions)
+            if action == "BUY" and current_cash < total_est_cost:
+                st.error(f"Fonds insuffisants pour remplir l'orderbook: ${current_cash:.2f} disponible, ${total_est_cost:.2f} requis")
+                return
+
+            # Execute sequential trades per level
+            all_ok = True
+            for exec_qty, exec_price in executions:
+                resp = api.create_trade(
+                    portfolio_id=selected_portfolio_id,
+                    market_id=trade_market_id,
+                    outcome=outcome,
+                    side=action.lower(),
+                    quantity=round(exec_qty, 8),
+                    price=float(exec_price),
+                    notes=trade_note if trade_note else None
+                )
+                if resp.get("status") not in (200, 201):
+                    all_ok = False
+                    err = resp.get("data", {}).get("detail") if isinstance(resp.get("data"), dict) else resp.get("error")
+                    st.error(f"Erreur niveau {exec_price}: {err}")
+                    break
+
+            if all_ok:
+                st.success("✅ Ordre(s) exécuté(s) sur l'orderbook")
                 for key in ["prefill_action", "prefill_outcome", "prefill_max_qty", "prefill_use_max", "prefill_portfolio_id"]:
                     st.session_state.pop(key, None)
-                
                 st.balloons()
-                # Stay on the same market detail page - just refresh to show updated data
                 import time
-                time.sleep(1.5)
+                time.sleep(1.0)
                 st.rerun()
-            else:
-                error_detail = trade_resp.get("data", {}).get("detail") if isinstance(trade_resp.get("data"), dict) else trade_resp.get("error")
-                st.error(f"Erreur: {error_detail}")
 
 
 def render():
     """Main render function."""
     _init_state()
     api = APIClient(API_URL)
-    
+    # Remove orderbook from session state when leaving the trading detail view
+    if st.session_state.get("trading_view") != "detail" and "orderbook" in st.session_state:
+        st.session_state.pop("orderbook", None)
+
     if st.session_state.get("trading_view") == "detail":
         _render_market_detail(api)
     else:
