@@ -29,6 +29,117 @@ from utils.display_figure import _create_price_chart
 
 
 
+def _create_orderbook_depth_chart(orderbook: dict, market: dict):
+    """Create and display orderbook depth charts for YES and NO side-by-side."""
+    try:
+        ob = orderbook or {}
+        tokens = list(ob.keys())
+    except Exception:
+        tokens = []
+
+    if not tokens:
+        return
+
+    # Map asset_ids to outcomes (YES/NO)
+    asset_ids = market.get("clob_token_ids", [])
+    outcomes = market.get("outcomes", []) or []
+    
+    # Helper function to build a single depth chart
+    def build_depth_chart_for_token(token_id, outcome_label):
+        token_book = ob.get(token_id) or {}
+        bids = token_book.get("bids", {}) or {}
+        asks = token_book.get("asks", {}) or {}
+
+        # Build sorted price/quantity lists
+        try:
+            ask_levels = sorted([(float(p), float(q)) for p, q in asks.items()], key=lambda x: x[0])
+        except Exception:
+            ask_levels = []
+        try:
+            bid_levels = sorted([(float(p), float(q)) for p, q in bids.items()], key=lambda x: x[0], reverse=True)
+        except Exception:
+            bid_levels = []
+
+        # Cumulative quantities
+        def cum_levels(levels):
+            prices = []
+            cums = []
+            total = 0.0
+            for price, qty in levels:
+                total += float(qty)
+                prices.append(price)
+                cums.append(total)
+            return prices, cums
+
+        ask_prices, ask_cum = cum_levels(ask_levels)
+        bid_prices, bid_cum = cum_levels(bid_levels)
+
+        # Create Plotly figure: quantity on x, price on y (inverted axes)
+        fig = go.Figure()
+        if ask_prices and ask_cum:
+            fig.add_trace(go.Scatter(
+                x=ask_cum,
+                y=ask_prices,
+                mode='lines',
+                name='Asks',
+                line=dict(color=COLORS.get('accent_red', '#ef4444')),
+                fill='tozerox',
+                line_shape='hv',
+            ))
+        if bid_prices and bid_cum:
+            fig.add_trace(go.Scatter(
+                x=bid_cum,
+                y=bid_prices,
+                mode='lines',
+                name='Bids',
+                line=dict(color=COLORS.get('accent_green', '#22c55e')),
+                fill='tozerox',
+                line_shape='hv',
+            ))
+
+        fig.update_layout(
+            title=f"Depth — {outcome_label}",
+            xaxis_title='Quantité cumulée',
+            yaxis_title='Prix',
+            height=420,
+            paper_bgcolor=COLORS.get('bg_secondary', '#0f172a'),
+            plot_bgcolor=COLORS.get('bg_secondary', '#0f172a'),
+            xaxis=dict(showgrid=True, gridcolor=COLORS.get('border')),
+            yaxis=dict(showgrid=True, gridcolor=COLORS.get('border')),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+        )
+
+        return fig
+
+    # Add spacing before depth charts
+    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+
+    # Display depth charts for YES and NO side-by-side
+    col_yes, col_no = st.columns(2)
+
+    with col_yes:
+        if len(tokens) >= 1 and len(asset_ids) >= 1:
+            first_token = asset_ids[0]
+            first_outcome = outcomes[0] if len(outcomes) > 0 else "YES"
+            if str(first_token) in tokens:
+                fig = build_depth_chart_for_token(str(first_token), first_outcome)
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+    with col_no:
+        if len(tokens) >= 2 and len(asset_ids) >= 2:
+            second_token = asset_ids[1]
+            second_outcome = outcomes[1] if len(outcomes) > 1 else "NO"
+            if str(second_token) in tokens:
+                fig = build_depth_chart_for_token(str(second_token), second_outcome)
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        elif len(tokens) >= 2:
+            # Fallback: use second token from orderbook
+            second_token = tokens[1]
+            second_outcome = "NO"
+            fig = build_depth_chart_for_token(second_token, second_outcome)
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+
 def _render_position_panel(api: APIClient, market: dict):
     """Render position panel for the current market if user has a position."""
     # Get all user portfolios
@@ -477,7 +588,11 @@ def _render_market_detail(api: APIClient):
     # Conteneur pour afficher
     orderbook_container = st.empty()
     with orderbook_container.container():
+        # st.write(st.session_state.orderbook)
         display_orderbook_ui(st.session_state.orderbook)
+
+    # Depth chart for orderbook
+    _create_orderbook_depth_chart(st.session_state.orderbook, market)
 
 
 
@@ -548,7 +663,7 @@ def _render_trade_form(api: APIClient, market: dict):
         key="order_portfolio"
     )
     selected_portfolio = portfolio_by_id[selected_portfolio_id]
-    
+    # st.write(selected_portfolio_id)
     # Get current cash
     portfolio_detail = api.get_portfolio(selected_portfolio_id)
     current_cash = 0
@@ -569,7 +684,7 @@ def _render_trade_form(api: APIClient, market: dict):
             "Action",
             ["BUY", "SELL"],
             index=1 if default_action == "SELL" else 0,
-            format_func=lambda x: "🟢 Acheter" if x == "BUY" else "🔴 Vendre",
+            format_func=lambda x: "Acheter" if x == "BUY" else "Vendre",
             key="order_action"
         )
     
@@ -784,7 +899,7 @@ def _render_trade_form(api: APIClient, market: dict):
     
     # Submit button (disabled when no best price / orderbook)
     submitted = st.button(
-        "🚀 Exécuter l'ordre",
+        "Exécuter l'ordre",
         type="primary",
         use_container_width=True,
         disabled=(best_price is None)
