@@ -3,7 +3,7 @@ Application configuration loaded from environment variables.
 """
 from functools import lru_cache
 from pydantic_settings import BaseSettings
-
+import os
 
 class Settings(BaseSettings):
     """Application settings from environment variables."""
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     
     # JWT Configuration
-    jwt_secret_key: str = "CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET"
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET")
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
     
