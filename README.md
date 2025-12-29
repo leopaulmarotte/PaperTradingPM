@@ -80,20 +80,72 @@ docker exec mongodb mongorestore /dump
 
 ### Running Tests
 
+Tests run in a dedicated Docker service with access to all project code.
+
 ```bash
-pip install -r backend/requirements.txt
+# Run all unit tests
+docker compose run --rm test /tests -m "not integration" -v
 
-# Unit tests (no external dependencies)
-pytest tests/ -m "not integration"
+# Run specific test file
+docker compose run --rm test /tests/backend/test_services.py -v
 
-# Integration tests (requires running services + network)
-pytest tests/ -m integration
+# Integration tests (requires services running)
+docker compose up -d mongodb redis backend
+docker compose run --rm test /tests -m integration -v
 
 # With coverage
-pytest tests/ --cov=backend/app --cov-report=html
+docker compose run --rm test /tests --cov=app --cov-report=term-missing
 ```
 
 ---
+
+### Test Structure
+
+```
+tests/
+├── pytest.ini                    # Config: asyncio_mode=auto, markers
+├── conftest.py                   # Global fixtures (fresh timestamps, mock DB/Redis)
+├── fixtures/
+│   ├── polymarket_responses/     # Market JSON fixtures
+│   │   ├── market_fed_decision_october.json
+│   │   ├── market_fed_decision_june.json
+│   │   ├── price_history_fed_october.json
+│   │   ├── active_markets_sample.json
+│   │   └── README.md
+│   └── test_data/
+│       ├── users.json
+│       └── portfolios.json
+├── backend/
+│   ├── conftest.py               # Backend fixtures (mock services, auth bypass)
+│   ├── test_health.py            # Health endpoint tests
+│   ├── test_websocket.py         # WS connection, subscription, ping/pong
+│   ├── test_database.py          # Connection, indexes, registry tests
+│   └── test_services.py          # Password hashing, MarketService unit tests
+├── workers/
+│   ├── test_polymarket_sync.py   # Batch fetching, transform_market, resume
+│   └── test_live_data_worker.py  # Redis streams, pause flag
+├── frontend/
+│   ├── conftest.py               # Mock session_state, API responses
+│   └── test_formatters.py        # Number, currency, date formatting
+└── integration/
+    ├── conftest.py               # Live API fixtures (URLs, timeouts)
+    ├── test_polymarket_api_live.py   # Real Polymarket API tests
+    └── test_full_trading_flow.py     # End-to-end backend tests
+```
+
+### Key Testing Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **mongomock + mongomock-motor** | Isolated MongoDB testing without real DB |
+| **fakeredis** | Mock Redis for cache/stream tests |
+| **Fresh timestamps on fixtures** | Prevents cache staleness issues (`load_fixture_with_fresh_timestamps()`) |
+| **Closed markets (fed-decision-*)** | Resolved markets don't change, stable for assertions |
+| **Unit tests for pure functions** | Tests services, formatters, and helpers without FastAPI mocking |
+| **Integration tests for endpoints** | Endpoint tests run against live backend (marked `integration`) |
+
+
+
 
 ## Part 2: Architecture and Implementation
 

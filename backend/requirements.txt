@@ -26,3 +26,14 @@ python-dotenv>=1.0.0
 
 # WebSocket support (included in uvicorn[standard])
 websockets>=12.0
+
+# =========================
+# Testing
+# =========================
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+mongomock>=4.1.0
+mongomock-motor>=0.0.21
+fakeredis>=2.20.0

@@ -36,8 +36,6 @@ services:
     build: ./backend
     container_name: fastapi_backend
 
-    # On monte le code backend local
-    # => pas besoin de rebuild quand tu modifies un .py
     volumes:
       - ./backend:/app
 
@@ -145,8 +143,35 @@ services:
 
 
 
+  # =========================
+  # Test Runner
+  # =========================
+  test:
+    build: ./backend
+    container_name: test_runner
+    profiles:
+      - test
+    volumes:
+      - ./backend:/app
+      - ./frontend:/frontend
+      - ./tests:/tests
+      - ./workers:/workers
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONPATH=/app:/frontend:/workers
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - app_network
+    entrypoint: ["pytest"]
+    command: ["/tests", "-v"]
+
+
 # =========================
-# Réseau Docker
+# Networks
 # =========================
 networks:
   app_network:
