@@ -6,6 +6,8 @@
 
 *.ipynb
 __pycache__/
+.pytest_cache/
 *.pyc
 
 HANDOFF.md
+DS_Store
