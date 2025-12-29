@@ -1,0 +1,38 @@
+{
+  "markets": [
+    {
+      "slug": "will-bitcoin-reach-100k-2025",
+      "condition_id": "0xsample1234567890",
+      "question": "Will Bitcoin reach $100,000 by end of 2025?",
+      "outcomes": ["Yes", "No"],
+      "outcome_prices": ["0.65", "0.35"],
+      "clob_token_ids": ["11111111111111111111", "22222222222222222222"],
+      "volume_24h": 125000.0,
+      "volume_total": 5000000.0,
+      "liquidity": 250000.0,
+      "closed": false,
+      "active": true,
+      "end_date": "2025-12-31T23:59:59Z",
+      "tags": ["Crypto", "Bitcoin"],
+      "last_synced_at": "2024-12-29T10:00:00Z"
+    },
+    {
+      "slug": "us-election-2024-winner",
+      "condition_id": "0xsample0987654321",
+      "question": "Who will win the 2024 US Presidential Election?",
+      "outcomes": ["Democrat", "Republican"],
+      "outcome_prices": ["0.48", "0.52"],
+      "clob_token_ids": ["33333333333333333333", "44444444444444444444"],
+      "volume_24h": 500000.0,
+      "volume_total": 25000000.0,
+      "liquidity": 1000000.0,
+      "closed": false,
+      "active": true,
+      "end_date": "2024-11-05T23:59:59Z",
+      "tags": ["Politics", "Elections", "US"],
+      "last_synced_at": "2024-12-29T10:00:00Z"
+    }
+  ],
+  "total": 2,
+  "note": "Sample active markets - actual markets change frequently. For integration tests, fetch markets dynamically."
+}

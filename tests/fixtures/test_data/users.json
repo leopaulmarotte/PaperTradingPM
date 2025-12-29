@@ -1,0 +1,26 @@
+[
+  {
+    "email": "testuser@example.com",
+    "password": "SecurePassword123!",
+    "roles": ["user"],
+    "status": "active"
+  },
+  {
+    "email": "admin@example.com",
+    "password": "AdminPassword123!",
+    "roles": ["admin"],
+    "status": "active"
+  },
+  {
+    "email": "premium@example.com",
+    "password": "PremiumPassword123!",
+    "roles": ["premium_user"],
+    "status": "active"
+  },
+  {
+    "email": "disabled@example.com",
+    "password": "DisabledPassword123!",
+    "roles": ["user"],
+    "status": "disabled"
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "slug": "fed-decision-in-october",
+  "condition_id": "0x1234567890abcdef1234567890abcdef12345678",
+  "question": "What will the Fed decide at its October 2024 FOMC meeting?",
+  "description": "This market resolves based on the Federal Reserve's interest rate decision announced at the conclusion of the October 2024 Federal Open Market Committee (FOMC) meeting. The market resolves YES if the Fed cuts rates by 25 basis points.",
+  
+  "outcomes": ["Yes", "No"],
+  "outcome_prices": ["1.0", "0.0"],
+  "clob_token_ids": ["12345678901234567890", "09876543210987654321"],
+  
+  "volume_24h": 0.0,
+  "volume_7d": 0.0,
+  "volume_total": 1523847.50,
+  "liquidity": 0.0,
+  
+  "best_bid": null,
+  "best_ask": null,
+  "spread": null,
+  
+  "closed": true,
+  "active": false,
+  "end_date": "2024-10-31T23:59:59Z",
+  
+  "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/fed-decision-october.png",
+  "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/fed-icon.png",
+  "tags": ["Politics", "Federal Reserve", "Economics", "Interest Rates"],
+  "rewards": {},
+  
+  "last_synced_at": "2024-10-31T23:59:59Z"
+}
