@@ -203,7 +203,7 @@ The Trading Page is where you can explore different Polymarket markets and take 
 
 - **View Market Details**:  
 
-![sidebar](images/details.png)
+![details](images/details.png)
 
   - Click **View Details** to see full market information:  
     - **Traded volume**, **liquidity**, **end date**  
@@ -214,7 +214,7 @@ The Trading Page is where you can explore different Polymarket markets and take 
 
 Once you have created a portfolio and refresh the orderbook, you can place an order. We will see just bellow how to create a portfolio.
 
-![sidebar](images/order.png)
+![Place an order](images/order.png)
 
 - **Place an Order**:  
   1. Select a **portfolio** (must be created first).  
@@ -238,7 +238,7 @@ In order to make a trade, you need first to create a portfolio. Let's see how to
 
 Once a portfolio has been created, several buttons allow you to perform actions on it. The **Trading** button takes you directly to the Trading Page to take positions on markets using this portfolio. The **Metrics** button opens the Metrics Page (described below) to view the performance of this portfolio. You can also view the **Details** of the portfolio or **Delete** the portfolio entirely.
 
-![sidebar](images/portfolio.png)
+![Portfolio](images/portfolio.png)
 
 - **View Portfolios and Positions**:  
   - Created portfolios appear below the form, initially empty.  
@@ -247,7 +247,7 @@ Once a portfolio has been created, several buttons allow you to perform actions 
     - **Modify**: Return to Trading page to adjust positions  
     - **Liquidate**: Sell all positions and recover cash  
 
-![sidebar](images/composition.png)
+![Composition](images/composition.png)
 
 So when a portfolio has been created and when a trade has been down, you can see the performance of your portfolio on the Metrics page.
 
@@ -258,7 +258,9 @@ So when a portfolio has been created and when a trade has been down, you can see
 First you need to select a portfolio. Then, two charts are displayed :
 
 - Displays the **P&L evolution** over time for a portfolio.  
+![Global Pnl](images/globalpnl.png)
 - Filter menu to view **specific position P&L**.  
+![Position Pnl](images/positionpnl.png)
 ---
 
 ### 2.6. History Page
@@ -266,6 +268,7 @@ First you need to select a portfolio. Then, two charts are displayed :
 - Shows the history of **all your transactions**: buys, sells, deposits, withdrawals.  
 - Filter by portfolio or transaction type.  
 - Download history as **CSV** for external analysis.  
+![History](images/history.png)
 
 ---
 
