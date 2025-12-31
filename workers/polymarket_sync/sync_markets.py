@@ -492,7 +492,7 @@ class MarketSyncWorker:
         # Ensure last_full is timezone-aware (MongoDB may return naive datetime)
         if last_full.tzinfo is None:
             last_full = last_full.replace(tzinfo=timezone.utc)
-        
+
         elapsed_hours = (
             datetime.now(timezone.utc) - last_full
         ).total_seconds() / 3600
