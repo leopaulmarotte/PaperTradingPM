@@ -379,7 +379,7 @@ def _render_market_list(api: APIClient):
                 global_idx = row_start + idx
                 slug = market.get("slug") or f"market-{global_idx}"
                 
-                # Card HTML
+                # Card HTML (comportement initial, pas d'API injectée)
                 card_html = _create_market_card(market, global_idx)
                 st.markdown(card_html, unsafe_allow_html=True)
                 

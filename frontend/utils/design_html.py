@@ -320,23 +320,44 @@ def _create_market_card(market: dict, idx: int) -> str:
     volume = format_number(market.get("volume_24h", 0))
     liquidity = format_number(market.get("liquidity", 0))
     
-    # Get YES price
-    prices = market.get("outcome_prices", [])
+    # Get YES price (synchronisé avec le détail)
     yes_price = "—"
     yes_color = COLORS["text_secondary"]
-    if prices:
+    prices = market.get("outcome_prices", [])
+    slug = market.get("slug")
+    api = market.get("_api")  # Optionnel, si passé dans le dict
+    last_yes_price = None
+    # Si possible, récupérer le dernier prix traité du token YES via l'API
+    try:
+        if api and slug:
+            price_resp = api.get_price_history(slug, outcome_index=0)
+            if price_resp and price_resp.get("status") == 200:
+                price_data = price_resp.get("data") or {}
+                price_history = price_data.get("history", [])
+                if price_history:
+                    last_point = price_history[-1]
+                    p = last_point.get("price") or last_point.get("p")
+                    last_yes_price = float(p) * 100
+    except Exception:
+        last_yes_price = None
+    # Fallback sur outcome_prices[0] si pas d'historique
+    if last_yes_price is not None:
+        yes_val = last_yes_price
+    elif prices:
         try:
             yes_val = float(prices[0]) * 100
-            yes_price = f"{yes_val:.0f}%"
-            # Color based on probability
-            if yes_val >= 70:
-                yes_color = COLORS["accent_green"]
-            elif yes_val <= 30:
-                yes_color = COLORS["accent_red"]
-            else:
-                yes_color = COLORS["accent_blue"]
         except:
-            pass
+            yes_val = None
+    else:
+        yes_val = None
+    if yes_val is not None:
+        yes_price = f"{yes_val:.0f}%"
+        if yes_val >= 70:
+            yes_color = COLORS["accent_green"]
+        elif yes_val <= 30:
+            yes_color = COLORS["accent_red"]
+        else:
+            yes_color = COLORS["accent_blue"]
     
     # Status badge
         # Détermination dynamique de la fermeture du marché (même logique que détail)
