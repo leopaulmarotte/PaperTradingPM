@@ -259,9 +259,6 @@ First you need to select a portfolio. Then, two charts are displayed :
 
 - Displays the **P&L evolution** over time for a portfolio.  
 - Filter menu to view **specific position P&L**.  
-
-**Image placeholder**: Interactive P&L chart with filter menu
-
 ---
 
 ### 2.6. History Page
@@ -270,17 +267,12 @@ First you need to select a portfolio. Then, two charts are displayed :
 - Filter by portfolio or transaction type.  
 - Download history as **CSV** for external analysis.  
 
-**Image placeholder**: Transaction history table with “Download CSV” button
-
 ---
 
 ### 2.7. Account Page
 
 - Update personal information: you can change your password.
 - **Log out** securely from the application.  
-
-**Image placeholder**: Account page screenshot with editable fields and logout button
-
 
 ---
 
