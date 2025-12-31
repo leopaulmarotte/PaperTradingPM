@@ -26,7 +26,7 @@ Create a `.env` file (see `.env.example`):
 MONGO_URI=mongodb://mongodb:27017
 REDIS_HOST=redis
 REDIS_PORT=6379
-API_KEY=your_polymarket_clob_api_key
+API_KEY=your_polymarket_clob_api_key (it is used for the orderbook access, use this one : 0xc29abf02109df1a522bcb290f44aae33381723ebbdd98d1f5eefdc36800f71cf)
 CLOB_URL=https://clob.polymarket.com
 JWT_SECRET_KEY=CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET
 ```
