@@ -15,23 +15,23 @@ A paper trading platform for [Polymarket](https://polymarket.com) prediction mar
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#fff', 'primaryBorderColor': '#3a6ea5', 'lineColor': '#5c7cfa', 'secondaryColor': '#63c5b8', 'tertiaryColor': '#f8f9fa', 'background': '#ffffff'}}}%%
 flowchart LR
-    subgraph Polymarket[" 🌐 Polymarket APIs"]
+    subgraph Polymarket["Polymarket APIs"]
         GAMMA[Gamma API]
         CLOB[CLOB API]
         DATA[Data API]
     end
     
-    subgraph Workers[" ⚙️ Workers"]
+    subgraph Workers["Workers"]
         SYNC[polymarket_sync]
         LIVE[live_data_worker]
     end
     
-    subgraph Storage[" 💾 Storage"]
+    subgraph Storage["Storage"]
         MONGO[(MongoDB)]
         REDIS[(Redis)]
     end
     
-    subgraph Application[" 🚀 Application"]
+    subgraph Application["Application"]
         BACKEND[FastAPI Backend]
         FRONTEND[Streamlit Frontend]
     end
@@ -183,7 +183,7 @@ The backend uses JWT-based authentication with the following characteristics:
 **Protected endpoints** extract the token from the query string, decode it, and verify the user exists and is active. User roles (`user`, `premium_user`, `admin`) enable role-based access control.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#1a1a2e', 'signalColor': '#5c7cfa', 'actorBkg': '#4f86c6', 'actorTextColor': '#fff', 'actorBorder': '#3a6ea5', 'activationBkgColor': '#e8f4f8', 'sequenceNumberColor': '#fff'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#1c1c4cff', 'signalColor': '#5c7cfa', 'actorBkg': '#4f86c6', 'actorTextColor': '#fff', 'actorBorder': '#3a6ea5', 'activationBkgColor': '#e8f4f8', 'sequenceNumberColor': '#fff'}}}%%
 sequenceDiagram
     participant Client
     participant Backend
