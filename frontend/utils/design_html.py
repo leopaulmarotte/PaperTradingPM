@@ -22,15 +22,15 @@ def render_portfolio_card(name, pid, performance, perf_class, perf_sign, total_v
         </div>
         <div class="portfolio-metrics">
             <div class="metric-box">
-                <div class="metric-label">Valeur Totale</div>
+                <div class="metric-label">Total Value</div>
                 <div class="metric-value neutral">${total_value:,.2f}</div>
             </div>
             <div class="metric-box">
-                <div class="metric-label">Cash Disponible</div>
+                <div class="metric-label">Available Cash</div>
                 <div class="metric-value">${cash_balance:,.2f}</div>
             </div>
             <div class="metric-box">
-                <div class="metric-label">En Position</div>
+                <div class="metric-label">In Position</div>
                 <div class="metric-value">${total_exposure:,.2f}</div>
             </div>
             <div class="metric-box">
@@ -55,19 +55,19 @@ def render_position_card(pos, pid):
         </div>
         <div class="position-metrics">
             <div class="metric-box">
-                <div class="metric-label">Quantité</div>
+                <div class="metric-label">Quantity</div>
                 <div class="metric-value">{pos['qty']:.2f}</div>
             </div>
             <div class="metric-box">
-                <div class="metric-label">Prix Actuel</div>
+                <div class="metric-label">Current Price</div>
                 <div class="metric-value">${pos['current_price']:.4f}</div>
             </div>
             <div class="metric-box">
-                <div class="metric-label">Coût</div>
+                <div class="metric-label">Cost</div>
                 <div class="metric-value">${pos['cost_basis']:.2f}</div>
             </div>
             <div class="metric-box">
-                <div class="metric-label">Valeur</div>
+                <div class="metric-label">Value</div>
                 <div class="metric-value">${pos['current_value']:.2f}</div>
             </div>
             <div class="metric-box">
@@ -406,13 +406,13 @@ def _create_market_card(market: dict, idx: int) -> str:
                 pass
         # Status badge
         if is_closed:
-            badge = f'<span class="badge-closed">Clôturé</span>'
+            badge = f'<span class="badge-closed">Closed</span>'
         else:
             time_left = time_until_end(end_date) if end_date else ""
             if time_left:
                 badge = f'<span class="badge-active">{time_left}</span>'
             else:
-                badge = '<span class="badge-active">Actif</span>'
+                badge = '<span class="badge-active">Active</span>'
     
     return f"""
     <div class="market-card" id="card-{idx}">

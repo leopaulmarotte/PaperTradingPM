@@ -57,7 +57,7 @@ def render():
     """, unsafe_allow_html=True)
     
     # Page title (same style as other pages)
-    st.title("Métriques")
+    st.title("Metrics")
     
     api = APIClient(API_URL)
     
@@ -71,7 +71,7 @@ def render():
     # Load all portfolios
     resp = api.list_portfolios()
     if resp.get("status") != 200:
-        st.error("Impossible de charger les portfolios")
+        st.error("Unable to load portfolios")
         return
     
     portfolios = resp.get("data") or []
@@ -79,7 +79,7 @@ def render():
         portfolios = list(portfolios.values())
     
     if not portfolios:
-        st.info("Aucun portfolio trouvé. Créez un portfolio depuis la page Portfolios.")
+        st.info("No portfolio found. Create a portfolio from the Portfolios page.")
         return
     
     # Build dropdown options
@@ -93,7 +93,7 @@ def render():
     
     # Portfolio selector (full width, no resolution selector)
     selected_id = st.selectbox(
-        "📁 Sélectionner un portfolio",
+        "📁 Select a portfolio",
         options=portfolio_ids,
         format_func=lambda x: portfolio_options[x],
         index=default_index,
@@ -108,18 +108,18 @@ def render():
         st.session_state.pop("metrics_portfolio_id", None)
     
     if not selected_id:
-        st.warning("Veuillez sélectionner un portfolio")
+        st.warning("Please select a portfolio")
         return
     
     # =========================================================================
     # LOAD MTM DATA
     # =========================================================================
     
-    with st.spinner("Chargement des données mark-to-market..."):
+    with st.spinner("Loading mark-to-market data..."):
         mtm_resp = api.get_portfolio_mtm(selected_id, resolution=resolution)
     
     if mtm_resp.get("status") != 200:
-        st.error("Impossible de charger les données MTM")
+        st.error("Unable to load MTM data")
         if mtm_resp.get("data"):
             st.json(mtm_resp.get("data"))
         return
@@ -127,7 +127,7 @@ def render():
     mtm_data = mtm_resp.get("data", {})
     
     if not mtm_data:
-        st.warning("Aucune donnée disponible pour ce portfolio")
+        st.warning("No data available for this portfolio")
         return
     
     # =========================================================================
@@ -145,7 +145,7 @@ def render():
     st.markdown(f"""
     <div class="kpi-row">
         <div class="kpi-card">
-            <div class="kpi-label">P&L Total</div>
+            <div class="kpi-label">Total P&L</div>
             <div class="kpi-value {pnl_class}">{pnl_sign}${total_pnl:,.2f}</div>
         </div>
         <div class="kpi-card">
@@ -153,11 +153,11 @@ def render():
             <div class="kpi-value {pnl_class}">{pnl_sign}{total_pnl_percent:.2f}%</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-label">Valeur Actuelle</div>
+            <div class="kpi-label">Current Value</div>
             <div class="kpi-value kpi-neutral">${total_value:,.2f}</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-label">Capital Initial</div>
+            <div class="kpi-label">Initial Capital</div>
             <div class="kpi-value kpi-neutral">${initial_balance:,.2f}</div>
         </div>
     </div>
@@ -167,14 +167,13 @@ def render():
     # GRAPH 1: GLOBAL PORTFOLIO PNL
     # =========================================================================
     
-    st.subheader("P&L Global du Portfolio")
+    st.subheader("Global Portfolio P&L")
     
     pnl_series = mtm_data.get("pnl_series", [])
     
     if pnl_series:
         fig_portfolio = _create_portfolio_pnl_chart(pnl_series)
         st.plotly_chart(fig_portfolio, use_container_width=True, key="portfolio_pnl_chart")
-        
         # Show data points count and time span
         if len(pnl_series) >= 2:
             first_ts = pnl_series[0].get("timestamp", "")
@@ -187,23 +186,23 @@ def render():
                 days = span.days
                 hours = span.seconds // 3600
                 if days > 0:
-                    span_str = f"{days}j {hours}h"
+                    span_str = f"{days}d {hours}h"
                 else:
                     span_str = f"{hours}h {(span.seconds % 3600) // 60}min"
-                st.caption(f"📊 {len(pnl_series)} points de données • Période: {span_str}")
+                st.caption(f"📊 {len(pnl_series)} data points • Period: {span_str}")
             except:
-                st.caption(f"📊 {len(pnl_series)} points de données")
+                st.caption(f"📊 {len(pnl_series)} data points")
         else:
-            st.caption(f"📊 {len(pnl_series)} points de données")
+            st.caption(f"📊 {len(pnl_series)} data points")
     else:
-        st.info("Aucun trade exécuté - le P&L est constant à $0")
+        st.info("No trades executed - P&L is constant at $0")
     
     # =========================================================================
     # GRAPH 2: POSITION-LEVEL PNL
     # =========================================================================
     
     st.divider()
-    st.subheader("P&L par Position")
+    st.subheader("P&L by Position")
     
     all_positions = mtm_data.get("positions", [])
     
@@ -211,28 +210,24 @@ def render():
     positions = [p for p in all_positions if p.get("current_quantity", 0) != 0]
     
     if not positions:
-        st.info("Aucune position active (quantité > 0)")
+        st.info("No active position (quantity > 0)")
     else:
         # Build position dropdown with P&L displayed
         position_labels = [_format_position_label(p) for p in positions]
-        
         selected_position_idx = st.selectbox(
-            "Sélectionner une position",
+            "Select a position",
             options=range(len(positions)),
             format_func=lambda i: position_labels[i],
             key="position_selector"
         )
-        
         if selected_position_idx is not None:
             selected_position = positions[selected_position_idx]
-            
             # Simple metrics in columns
             pos_pnl = selected_position.get("total_pnl", 0)
             pos_qty = selected_position.get("current_quantity", 0)
             pos_avg_price = selected_position.get("average_entry_price", 0)
             pos_current_price = selected_position.get("current_price", 0)
             first_trade_at = selected_position.get("first_trade_at")
-            
             # Display opening date if available
             if first_trade_at:
                 try:
@@ -241,21 +236,19 @@ def render():
                         first_trade_dt = datetime.fromisoformat(first_trade_at.replace("Z", "+00:00"))
                     else:
                         first_trade_dt = first_trade_at
-                    st.caption(f"📅 Position ouverte le {first_trade_dt.strftime('%d/%m/%Y à %H:%M')}")
+                    st.caption(f"📅 Position opened on {first_trade_dt.strftime('%d/%m/%Y at %H:%M')}")
                 except:
                     pass
-            
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Quantité", f"{pos_qty:.2f}")
+                st.metric("Quantity", f"{pos_qty:.2f}")
             with col2:
-                st.metric("Prix d'entrée", f"${pos_avg_price:.4f}")
+                st.metric("Entry price", f"${pos_avg_price:.4f}")
             with col3:
-                st.metric("Prix actuel", f"${pos_current_price:.4f}")
+                st.metric("Current price", f"${pos_current_price:.4f}")
             with col4:
                 pnl_delta = f"{pos_pnl:+.2f}"
                 st.metric("P&L", f"${pos_pnl:.2f}", delta=pnl_delta)
-            
             # Position P&L chart
             fig_position = _create_position_pnl_chart(selected_position)
             st.plotly_chart(fig_position, use_container_width=True, key="position_pnl_chart")

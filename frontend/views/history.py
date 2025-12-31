@@ -27,12 +27,12 @@ from utils.display_figure import _build_trades_dataframe
 
 def render():
 	"""Render the history page."""
-	st.title("📊 Historique des transactions")
+	st.title("📊 Transaction History")
 	
 	api = APIClient(API_URL)
 	
 	# Fetch all trades
-	with st.spinner("Chargement de l'historique..."):
+	with st.spinner("Loading history..."):
 		trades = _fetch_all_trades(api)
 	
 	# Display summary metrics
@@ -40,33 +40,28 @@ def render():
 		total_trades = len(trades)
 		buy_count = sum(1 for t in trades if (t.get("side") or "").lower() == "buy")
 		sell_count = sum(1 for t in trades if (t.get("side") or "").lower() == "sell")
-		
 		col1, col2, col3, col4 = st.columns(4)
 		with col1:
-			st.metric("Total de transactions", total_trades)
+			st.metric("Total trades", total_trades)
 		with col2:
-			st.metric("Achats", buy_count)
+			st.metric("Buys", buy_count)
 		with col3:
-			st.metric("Ventes", sell_count)
+			st.metric("Sells", sell_count)
 		with col4:
 			try:
 				total_volume = sum(
 					float(t.get("quantity") or 0) * float(t.get("price") or 0)
 					for t in trades
 				)
-				st.metric("Volume total", f"${total_volume:,.2f}")
+				st.metric("Total volume", f"${total_volume:,.2f}")
 			except Exception:
-				st.metric("Volume total", "N/A")
-		
+				st.metric("Total volume", "N/A")
 		st.divider()
-		
 		# Build and display DataFrame
 		df = _build_trades_dataframe(trades)
-		
 		if not df.empty:
 			# Display table with proper formatting
-			st.subheader("Détail des transactions")
-			
+			st.subheader("Trade details")
 			# Use columns for better display control
 			col_config = {
 				"Timestamp": st.column_config.TextColumn(width="medium"),
@@ -79,7 +74,7 @@ def render():
 				"Prix total": st.column_config.NumberColumn(format="$%.2f", width="small"),
 				"Note": st.column_config.TextColumn(width="medium"),
 			}
-			
+			# If you want to translate column headers, do so in the DataFrame or formatter utility
 			st.dataframe(
 				df,
 				use_container_width=True,
@@ -87,18 +82,17 @@ def render():
 				column_config=col_config,
 				height=500,
 			)
-			
 			# Export option
 			csv_data = df.to_csv(index=False)
 			st.download_button(
-				label="📥 Télécharger en CSV",
+				label="📥 Download CSV",
 				data=csv_data,
 				file_name=f"history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
 				mime="text/csv",
 				use_container_width=True,
 			)
 		else:
-			st.warning("Aucune transaction n'a pu être affichée.")
+			st.warning("No transactions could be displayed.")
 	else:
-		st.info("📭 Aucune transaction enregistrée pour l'instant.")
+		st.info("📭 No transactions recorded yet.")
 

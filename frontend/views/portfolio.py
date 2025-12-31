@@ -20,31 +20,31 @@ def render():
         st.session_state.selected_portfolio_id = None
 
     # Creation form
-    with st.expander("➕ Créer un portfolio", expanded=True):
+    with st.expander("➕ Create a portfolio", expanded=True):
         with st.form("create_portfolio_form"):
-            name = st.text_input("Nom du portfolio", placeholder="Ex: Swing BTC")
+            name = st.text_input("Portfolio name", placeholder="E.g.: Swing BTC")
             initial_balance = st.number_input(
-                "Montant disponible", min_value=0.0, step=100.0, value=1000.0
+                "Available amount", min_value=0.0, step=100.0, value=1000.0
             )
-            submitted = st.form_submit_button("Créer", use_container_width=True)
+            submitted = st.form_submit_button("Create", use_container_width=True)
             if submitted:
                 if not name:
-                    st.error("Le nom est requis")
+                    st.error("Name is required")
                 elif initial_balance <= 0:
-                    st.error("Le montant doit être positif")
+                    st.error("Amount must be positive")
                 else:
                     resp = api.create_portfolio(name, initial_balance)
                     if resp.get("status") == 201 or resp.get("status") == 200:
-                        st.success("Portfolio créé")
+                        st.success("Portfolio created")
                         st.rerun()
                     else:
                         detail = resp.get("data", {}).get("detail") if isinstance(resp.get("data"), dict) else resp.get("error")
-                        st.error(detail or "Impossible de créer le portfolio")
+                        st.error(detail or "Unable to create portfolio")
 
     st.divider()
 
     # List portfolios
-    st.subheader("Vos portfolios")
+    st.subheader("Your portfolios")
     resp = api.list_portfolios()
     if resp.get("status") == 200:
         portfolios = resp.get("data") or []
@@ -137,7 +137,7 @@ def render():
                 col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
                 with col1:
                     if st.button(
-                        "📊 Détails" if st.session_state.selected_portfolio_id != pid else "🔼 Masquer",
+                        "📊 Details" if st.session_state.selected_portfolio_id != pid else "🔼 Hide",
                         key=f"view_{pid}",
                         use_container_width=True,
                     ):
@@ -156,16 +156,16 @@ def render():
                         st.session_state["nav_override"] = "Trading"
                         st.rerun()
                 with col4:
-                    if st.button("🗑️ Supprimer", key=f"delete_{pid}", use_container_width=True):
+                    if st.button("🗑️ Delete", key=f"delete_{pid}", use_container_width=True):
                         del_resp = api.delete_portfolio(pid)
                         if del_resp.get("status") in (200, 204):
-                            st.success("Portfolio supprimé")
+                            st.success("Portfolio deleted")
                             if st.session_state.selected_portfolio_id == pid:
                                 st.session_state.selected_portfolio_id = None
                             st.rerun()
                         else:
                             detail = del_resp.get("data", {}).get("detail") if isinstance(del_resp.get("data"), dict) else del_resp.get("error")
-                            st.error(detail or "Suppression impossible")
+                            st.error(detail or "Unable to delete portfolio")
 
                 # Inline detail if selected
                 if st.session_state.selected_portfolio_id == pid:
@@ -173,10 +173,10 @@ def render():
                     if detail_resp.get("status") == 200:
                         p_detail = detail_resp.get("data", {})
                         init_bal = p_detail.get("initial_balance", 0)
-                        st.caption(f"Montant initial: ${init_bal:,.2f}")
+                        st.caption(f"Initial amount: ${init_bal:,.2f}")
                     else:
                         detail = detail_resp.get("data", {}).get("detail") if isinstance(detail_resp.get("data"), dict) else detail_resp.get("error")
-                        st.error(detail or "Impossible de charger le portfolio")
+                        st.error(detail or "Unable to load portfolio")
                         st.divider()
                         continue
 
@@ -228,7 +228,7 @@ def render():
                                 positions[key]["notional"] += price * qty * (1 if side == "buy" else -1)
                                 positions[key]["count"] += 1
 
-                            st.subheader("📊 Composition du portfolio")
+                            st.subheader("📊 Portfolio composition")
                             
                             # Prepare positions data with current prices
                             positions_data = []
@@ -302,7 +302,7 @@ def render():
                                     # Buttons row
                                     btn_col1, btn_col2, btn_spacer = st.columns([1, 1, 4])
                                     with btn_col1:
-                                        if st.button("✏️ Modifier", key=f"modify_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
+                                        if st.button("✏️ Edit", key=f"modify_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
                                             st.session_state["nav_page"] = "Trading"
                                             st.session_state["nav_override"] = "Trading"
                                             st.session_state["selected_market"] = pos["market"]
@@ -313,8 +313,8 @@ def render():
                                             st.session_state["prefill_portfolio_id"] = pid
                                             st.rerun()
                                     with btn_col2:
-                                        if st.button("🔥 Liquider", key=f"liquidate_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
-                                            with st.spinner("Liquidation en cours..."):
+                                        if st.button("🔥 Liquidate", key=f"liquidate_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
+                                            with st.spinner("Liquidating..."):
                                                 sell_price = pos["current_price"]
                                                 resp_trade = api.create_trade(
                                                     portfolio_id=pid,
@@ -323,14 +323,14 @@ def render():
                                                     side="sell",
                                                     quantity=float(pos["qty"]),
                                                     price=float(sell_price),
-                                                    notes="Liquidation automatique",
+                                                    notes="Automatic liquidation",
                                                 )
                                                 if resp_trade.get("status") in (200, 201):
-                                                    st.success("Position liquidée avec succès")
+                                                    st.success("Position successfully liquidated")
                                                     st.rerun()
                                                 else:
                                                     detail = resp_trade.get("data", {}).get("detail") if isinstance(resp_trade.get("data"), dict) else resp_trade.get("error")
-                                                    st.error(detail or "Échec de la liquidation")
+                                                    st.error(detail or "Liquidation failed")
                                     
                                     st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
                                 
@@ -349,17 +349,17 @@ def render():
                                 
                                 # (Suppression de l'affichage de la valeur totale et de la performance globale)
                             else:
-                                st.info("Pas encore de positions.")
+                                st.info("No positions yet.")
                         else:
-                            st.info("Pas de trades pour ce portfolio.")
+                            st.info("No trades for this portfolio.")
                     else:
                         detail = trades_resp.get("data", {}).get("detail") if isinstance(trades_resp.get("data"), dict) else trades_resp.get("error")
-                        st.error(detail or "Impossible de récupérer les trades")
+                        st.error(detail or "Unable to retrieve trades")
 
                 st.divider()
         else:
-            st.info("Aucun portfolio pour l'instant. Créez-en un ci-dessus.")
+            st.info("No portfolios yet. Create one above.")
     else:
         detail = resp.get("data", {}).get("detail") if isinstance(resp.get("data"), dict) else resp.get("error")
-        st.error(detail or "Impossible de récupérer les portfolios")
+        st.error(detail or "Unable to retrieve portfolios")
     
