@@ -82,14 +82,14 @@ def render():
                         new_password_confirm=new_password_confirm,
                     )
                     if response["status"] == 200:
-                        st.success("✅ Password changed successfully!")
+                        st.success("Password changed successfully!")
                         st.info("Please log in again with your new password.")
                         # Log out user after password change
                         st.session_state.is_authenticated = False
                         st.session_state.token = None
                         st.rerun()
                     elif response["status"] == 401:
-                        st.error("❌ Incorrect current password")
+                        st.error("Incorrect current password")
                     else:
                         error_msg = response.get("data", {}).get("detail", response.get("error", "Unknown error"))
-                        st.error(f"❌ Error: {error_msg}")
+                        st.error(f"Error: {error_msg}")

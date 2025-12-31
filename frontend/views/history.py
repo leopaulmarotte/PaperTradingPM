@@ -27,7 +27,7 @@ from utils.display_figure import _build_trades_dataframe
 
 def render():
 	"""Render the history page."""
-	st.title("📊 Transaction History")
+	st.title("Transaction History")
 	
 	api = APIClient(API_URL)
 	
@@ -85,7 +85,7 @@ def render():
 			# Export option
 			csv_data = df.to_csv(index=False)
 			st.download_button(
-				label="📥 Download CSV",
+				label="Download CSV",
 				data=csv_data,
 				file_name=f"history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
 				mime="text/csv",
@@ -94,5 +94,5 @@ def render():
 		else:
 			st.warning("No transactions could be displayed.")
 	else:
-		st.info("📭 No transactions recorded yet.")
+		st.info("No transactions recorded yet.")
 

@@ -453,7 +453,7 @@ def display_orderbook_ui(orderbook: dict):
                 font-weight: 600;
                 text-align: center;
             ">
-            ⚠️ Rafraîchissez l'orderbook pour passer des trades.
+            Rafraîchissez l'orderbook pour passer des trades.
             </div>
             """,
             unsafe_allow_html=True

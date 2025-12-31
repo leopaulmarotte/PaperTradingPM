@@ -93,7 +93,7 @@ def render():
     
     # Portfolio selector (full width, no resolution selector)
     selected_id = st.selectbox(
-        "📁 Select a portfolio",
+        "Select a portfolio",
         options=portfolio_ids,
         format_func=lambda x: portfolio_options[x],
         index=default_index,
@@ -189,11 +189,11 @@ def render():
                     span_str = f"{days}d {hours}h"
                 else:
                     span_str = f"{hours}h {(span.seconds % 3600) // 60}min"
-                st.caption(f"📊 {len(pnl_series)} data points • Period: {span_str}")
+                st.caption(f"{len(pnl_series)} data points • Period: {span_str}")
             except:
-                st.caption(f"📊 {len(pnl_series)} data points")
+                st.caption(f"{len(pnl_series)} data points")
         else:
-            st.caption(f"📊 {len(pnl_series)} data points")
+            st.caption(f"{len(pnl_series)} data points")
     else:
         st.info("No trades executed - P&L is constant at $0")
     
@@ -236,7 +236,7 @@ def render():
                         first_trade_dt = datetime.fromisoformat(first_trade_at.replace("Z", "+00:00"))
                     else:
                         first_trade_dt = first_trade_at
-                    st.caption(f"📅 Position opened on {first_trade_dt.strftime('%d/%m/%Y at %H:%M')}")
+                    st.caption(f"Position opened on {first_trade_dt.strftime('%d/%m/%Y at %H:%M')}")
                 except:
                     pass
             col1, col2, col3, col4 = st.columns(4)

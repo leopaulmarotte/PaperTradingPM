@@ -20,7 +20,7 @@ def render():
         st.session_state.selected_portfolio_id = None
 
     # Creation form
-    with st.expander("➕ Create a portfolio", expanded=True):
+    with st.expander("Create a portfolio", expanded=True):
         with st.form("create_portfolio_form"):
             name = st.text_input("Portfolio name", placeholder="E.g.: Swing BTC")
             initial_balance = st.number_input(
@@ -137,7 +137,7 @@ def render():
                 col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
                 with col1:
                     if st.button(
-                        "📊 Details" if st.session_state.selected_portfolio_id != pid else "🔼 Hide",
+                        "Details" if st.session_state.selected_portfolio_id != pid else "Hide",
                         key=f"view_{pid}",
                         use_container_width=True,
                     ):
@@ -147,16 +147,16 @@ def render():
                             st.session_state.selected_portfolio_id = pid
                         st.rerun()
                 with col2:
-                    if st.button("📈 Metrics", key=f"metrics_{pid}", use_container_width=True):
+                    if st.button("Metrics", key=f"metrics_{pid}", use_container_width=True):
                         st.session_state["metrics_portfolio_id"] = pid
                         st.session_state["nav_override"] = "Metrics"
                         st.rerun()
                 with col3:
-                    if st.button("💹 Trader", key=f"trade_{pid}", use_container_width=True):
+                    if st.button("Trade", key=f"trade_{pid}", use_container_width=True):
                         st.session_state["nav_override"] = "Trading"
                         st.rerun()
                 with col4:
-                    if st.button("🗑️ Delete", key=f"delete_{pid}", use_container_width=True):
+                    if st.button("Delete", key=f"delete_{pid}", use_container_width=True):
                         del_resp = api.delete_portfolio(pid)
                         if del_resp.get("status") in (200, 204):
                             st.success("Portfolio deleted")
@@ -228,7 +228,7 @@ def render():
                                 positions[key]["notional"] += price * qty * (1 if side == "buy" else -1)
                                 positions[key]["count"] += 1
 
-                            st.subheader("📊 Portfolio composition")
+                            st.subheader("Portfolio composition")
                             
                             # Prepare positions data with current prices
                             positions_data = []
@@ -302,7 +302,7 @@ def render():
                                     # Buttons row
                                     btn_col1, btn_col2, btn_spacer = st.columns([1, 1, 4])
                                     with btn_col1:
-                                        if st.button("✏️ Edit", key=f"modify_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
+                                        if st.button("Edit", key=f"modify_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
                                             st.session_state["nav_page"] = "Trading"
                                             st.session_state["nav_override"] = "Trading"
                                             st.session_state["selected_market"] = pos["market"]
@@ -313,7 +313,7 @@ def render():
                                             st.session_state["prefill_portfolio_id"] = pid
                                             st.rerun()
                                     with btn_col2:
-                                        if st.button("🔥 Liquidate", key=f"liquidate_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
+                                        if st.button("Liquidate", key=f"liquidate_{pid}_{pos['market']}_{pos['outcome']}", use_container_width=True):
                                             with st.spinner("Liquidating..."):
                                                 sell_price = pos["current_price"]
                                                 resp_trade = api.create_trade(

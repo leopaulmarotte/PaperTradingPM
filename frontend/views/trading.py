@@ -241,7 +241,7 @@ def _render_position_panel(api: APIClient, market: dict):
     if not all_positions:
         return
     
-    st.markdown("### 📊 Your positions on this market")
+    st.markdown("### Your positions on this market")
     
     for pos in all_positions:
         pnl_sign = "+" if pos["pnl_dollar"] >= 0 else ""
@@ -251,7 +251,7 @@ def _render_position_panel(api: APIClient, market: dict):
             f"""
             <div style="background: linear-gradient(135deg, #1e1e2e, #2d2d44); border-radius: 10px; padding: 15px; margin-bottom: 10px; border-left: 4px solid #6366f1;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-weight: 600; color: #a0a0a0; font-size: 12px;">📁 {pos["portfolio"]}</span>
+                    <span style="font-weight: 600; color: #a0a0a0; font-size: 12px;">{pos["portfolio"]}</span>
                     <span style="font-weight: 700; color: #6366f1; font-size: 16px;">{pos["outcome"]}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
@@ -284,14 +284,14 @@ def _render_position_panel(api: APIClient, market: dict):
 
 def _render_market_list(api: APIClient):
     """Render the market explorer with card grid."""
-    st.markdown("## 🏛️ Explore markets")
+    st.markdown("## Explore markets")
     
     # Search and filters in a clean row
     col_search, col_status, col_sort, col_vol = st.columns([2, 1, 1, 1])
     
     with col_search:
         search = st.text_input(
-            "🔍 Search",
+            "Search",
             placeholder="Market name...",
             label_visibility="collapsed"
         )
@@ -547,7 +547,7 @@ def _render_market_detail(api: APIClient):
     
     # Description
     if market.get("description"):
-        with st.expander("📝 Description"):
+        with st.expander("Description"):
             st.write(market.get("description"))
     
     st.markdown("---")
@@ -557,7 +557,7 @@ def _render_market_detail(api: APIClient):
     
     with col_chart:
         # Current prices
-        st.markdown("### 📊 Last traded price")
+        st.markdown("### Last traded price")
         outcomes = market.get("outcomes") or []
         slug = market.get("slug")
         price_cols = st.columns(len(outcomes)) if outcomes else []
@@ -591,7 +591,7 @@ def _render_market_detail(api: APIClient):
                     st.write(f"{outcome}: —")
         
         # Price history chart - synchronized with the token selected in the order form
-        st.markdown("### 📈 Price history")
+        st.markdown("### Price history")
         selected_token = st.session_state.get("order_token", outcomes[0] if outcomes else "Yes")
         chart_outcome_index = 0
         for i, o in enumerate(outcomes):
@@ -625,7 +625,7 @@ def _render_market_detail(api: APIClient):
         st.session_state.orderbook = api.get_orderbook().get('data', {}).get('messages', {})
 
     # Refresh orderbook button
-    if st.button("🔄 Refresh orderbook"):
+    if st.button("Refresh orderbook"):
         st.session_state.orderbook = api.get_orderbook().get('data', {}).get('messages', {})
 
     # Container to display
@@ -639,7 +639,7 @@ def _render_market_detail(api: APIClient):
 
 
     with col_trade:
-        st.markdown("### 🎯 Place an order")
+        st.markdown("### Place an order")
         if is_closed:
             st.warning("This market is closed. Trading is not possible.")
         else:
@@ -659,7 +659,7 @@ def _render_trade_form(api: APIClient, market: dict):
     portfolios = portfolios_resp.get("data", [])
     if not portfolios:
         st.warning("Create a portfolio to start trading.")
-        if st.button("📁 Create a portfolio"):
+        if st.button("Create a portfolio"):
             st.session_state.nav_override = "Portfolio"
             st.rerun()
         return
@@ -712,7 +712,7 @@ def _render_trade_form(api: APIClient, market: dict):
         current_cash = portfolio_detail.get("data", {}).get("cash_balance", 0)
     
     st.markdown(
-        f"<p style='color: {COLORS['accent_green']}; font-size: 14px;'>💰 ${current_cash:,.2f} available</p>",
+        f"<p style='color: {COLORS['accent_green']}; font-size: 14px;'>${current_cash:,.2f} available</p>",
         unsafe_allow_html=True
     )
     
@@ -768,7 +768,7 @@ def _render_trade_form(api: APIClient, market: dict):
     
     if action == "SELL":
         st.markdown(
-            f"<p style='color: {COLORS['text_secondary']}; font-size: 12px;'>🔹 {available_qty:.2f} tokens available</p>",
+            f"<p style='color: {COLORS['text_secondary']}; font-size: 12px;'>{available_qty:.2f} tokens available</p>",
             unsafe_allow_html=True
         )
     
@@ -863,11 +863,11 @@ def _render_trade_form(api: APIClient, market: dict):
     
     # Show max info for SELL
     if action == "SELL" and available_qty > 0 and quantity > available_qty:
-        st.warning(f"⚠️ Maximum available quantity: {available_qty:.2f}")
+        st.warning(f"Maximum available quantity: {available_qty:.2f}")
     
     # Optional note field
     trade_note = st.text_input(
-        "📝 Note (optional)",
+        "Note (optional)",
         value="",
         max_chars=500,
         placeholder="Add a note to this order...",
@@ -1033,7 +1033,7 @@ def _render_trade_form(api: APIClient, market: dict):
                     break
 
             if all_ok:
-                st.success("✅ Ordre(s) exécuté(s) sur l'orderbook")
+                st.success("Ordre(s) exécuté(s) sur l'orderbook")
                 for key in ["prefill_action", "prefill_outcome", "prefill_max_qty", "prefill_use_max", "prefill_portfolio_id"]:
                     st.session_state.pop(key, None)
                 st.balloons()
