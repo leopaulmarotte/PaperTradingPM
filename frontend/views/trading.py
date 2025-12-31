@@ -410,12 +410,54 @@ def _render_market_list(api: APIClient):
             st.rerun()
 
 
+
 def _render_market_detail(api: APIClient):
-    """Render market detail view with chart and trading panel."""
+    # Détermination dynamique de la fermeture du marché
+    end_date = None
+    is_closed = False
     slug = st.session_state.get("selected_market")
     if not slug:
         st.warning("Aucun marché sélectionné.")
         return
+
+    with st.spinner("Chargement du marché..."):
+        resp = api.get_market(slug)
+        if resp["status"] != 200:
+            resp = api.get_market_by_condition(slug)
+    if resp["status"] != 200:
+        st.error(f"Impossible de charger le marché: {slug}")
+        return
+    market = resp["data"]
+    name = _display_name(market)
+    asset_ids = market.get("clob_token_ids", [])
+    end_date = market.get("end_date")
+    if end_date:
+        try:
+            # Supporte string ou datetime
+            if isinstance(end_date, str):
+                # Si la date ne contient pas d'heure, on complète à 23:59:59
+                if 'T' not in end_date:
+                    end_date_full = end_date.strip() + 'T23:59:59+00:00'
+                else:
+                    # Si l'heure est à minuit, on remplace par 23:59:59
+                    date_part, time_part = end_date.split('T')
+                    if time_part.startswith('00:00:00'):
+                        end_date_full = date_part + 'T23:59:59+00:00'
+                    else:
+                        end_date_full = end_date.replace("Z", "+00:00")
+                end_dt = datetime.fromisoformat(end_date_full)
+            else:
+                end_dt = end_date
+            now = datetime.utcnow().replace(tzinfo=end_dt.tzinfo)
+            # Le marché est clôturé uniquement si la date de fin est strictement dépassée
+            if now > end_dt:
+                is_closed = True
+        except Exception:
+            # fallback sur le champ closed si parsing échoue
+            is_closed = market.get("closed", False)
+    else:
+        is_closed = market.get("closed", False)
+
     
 
 
@@ -457,7 +499,8 @@ def _render_market_detail(api: APIClient):
     asset_ids = market.get("clob_token_ids", [])
     # st.write(   "Asset IDs:", asset_ids)
     # st.write("Asset IDs:", asset_ids)
-    is_closed = market.get("closed", False)
+    # Détermination dynamique de la fermeture du marché
+    end_date = market.get("end_date")
 
     # ===============================
     # Manage stream
@@ -598,7 +641,6 @@ def _render_market_detail(api: APIClient):
 
     with col_trade:
         st.markdown("### 🎯 Passer un ordre")
-        
         if is_closed:
             st.warning("Ce marché est clôturé. Le trading n'est plus possible.")
         else:
