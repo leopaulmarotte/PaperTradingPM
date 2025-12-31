@@ -5,6 +5,12 @@ import redis
 from typing import Annotated, Optional
 from app.dependencies.auth import get_current_active_user
 from app.models.user import User
+from app.schemas.market_stream import (
+    StreamStartResponse,
+    StreamStopResponse,
+    OrderbookResponse,
+    LatestMessageResponse,
+)
 
 
 
@@ -24,11 +30,12 @@ _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=T
 @router.post(
     "/start/{asset_id}",
     summary="Start live data stream",
+    response_model=StreamStartResponse,
 )
 async def start_stream(
     asset_id: str,
     current_user: Annotated[User, Depends(get_current_active_user)],
-):
+) -> StreamStartResponse:
     """
     Start streaming live data for one or more assets.
 
@@ -65,10 +72,11 @@ async def start_stream(
 @router.post(
     "/stop",
     summary="Stop live data stream",
+    response_model=StreamStopResponse,
 )
 async def stop_stream(
     current_user: Annotated[User, Depends(get_current_active_user)],
-):
+) -> StreamStopResponse:
     """
     Stop live data streaming.
 
@@ -102,10 +110,11 @@ async def stop_stream(
 @router.get(
     "/orderbook",
     summary="Get all streamed messages",
+    response_model=OrderbookResponse,
 )
 async def get_messages(
     current_user: Annotated[User, Depends(get_current_active_user)],
-):
+) -> OrderbookResponse:
     """
     Retrieve all stored streamed messages.
 
@@ -131,10 +140,11 @@ async def get_messages(
 @router.get(
     "/latest",
     summary="Get latest streamed message",
+    response_model=LatestMessageResponse,
 )
 async def get_latest_message(
     current_user: Annotated[User, Depends(get_current_active_user)],
-):
+) -> LatestMessageResponse:
     """
     Retrieve the latest streamed message.
 

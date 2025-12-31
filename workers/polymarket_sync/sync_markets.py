@@ -180,6 +180,7 @@ def transform_market(raw: dict[str, Any]) -> dict[str, Any]:
         "archived": raw.get("archived", False) in (True, "true", 1),
         
         "end_date_iso": raw.get("endDateIso"),
+        "end_date": raw.get("endDateIso"),
         "start_date_iso": raw.get("startDateIso"),
         "created_at": raw.get("createdAt"),
         

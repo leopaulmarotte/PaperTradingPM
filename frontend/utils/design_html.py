@@ -319,36 +319,100 @@ def _create_market_card(market: dict, idx: int) -> str:
     
     volume = format_number(market.get("volume_24h", 0))
     liquidity = format_number(market.get("liquidity", 0))
-    is_closed = market.get("closed", False)
     
-    # Get YES price
-    prices = market.get("outcome_prices", [])
+    # Get YES price (synchronisé avec le détail)
     yes_price = "—"
     yes_color = COLORS["text_secondary"]
-    if prices:
+    prices = market.get("outcome_prices", [])
+    slug = market.get("slug")
+    api = market.get("_api")  # Optionnel, si passé dans le dict
+    last_yes_price = None
+    # Si possible, récupérer le dernier prix traité du token YES via l'API
+    try:
+        if api and slug:
+            price_resp = api.get_price_history(slug, outcome_index=0)
+            if price_resp and price_resp.get("status") == 200:
+                price_data = price_resp.get("data") or {}
+                price_history = price_data.get("history", [])
+                if price_history:
+                    last_point = price_history[-1]
+                    p = last_point.get("price") or last_point.get("p")
+                    last_yes_price = float(p) * 100
+    except Exception:
+        last_yes_price = None
+    # Fallback sur outcome_prices[0] si pas d'historique
+    if last_yes_price is not None:
+        yes_val = last_yes_price
+    elif prices:
         try:
             yes_val = float(prices[0]) * 100
-            yes_price = f"{yes_val:.0f}%"
-            # Color based on probability
-            if yes_val >= 70:
-                yes_color = COLORS["accent_green"]
-            elif yes_val <= 30:
-                yes_color = COLORS["accent_red"]
-            else:
-                yes_color = COLORS["accent_blue"]
         except:
-            pass
+            yes_val = None
+    else:
+        yes_val = None
+    if yes_val is not None:
+        yes_price = f"{yes_val:.0f}%"
+        if yes_val >= 70:
+            yes_color = COLORS["accent_green"]
+        elif yes_val <= 30:
+            yes_color = COLORS["accent_red"]
+        else:
+            yes_color = COLORS["accent_blue"]
     
     # Status badge
-    if is_closed:
-        badge = f'<span class="badge-closed">Clôturé</span>'
-    else:
+        # Détermination dynamique de la fermeture du marché (même logique que détail)
+        from datetime import datetime
         end_date = market.get("end_date")
-        time_left = time_until_end(end_date) if end_date else ""
-        if time_left:
-            badge = f'<span class="badge-active">{time_left}</span>'
+        is_closed = False
+        if end_date:
+            try:
+                if isinstance(end_date, str):
+                    if 'T' not in end_date:
+                        end_date_full = end_date.strip() + 'T23:59:59+00:00'
+                    else:
+                        # Si l'heure est à minuit, on remplace par 23:59:59
+                        date_part, time_part = end_date.split('T')
+                        if time_part.startswith('00:00:00'):
+                            end_date_full = date_part + 'T23:59:59+00:00'
+                        else:
+                            end_date_full = end_date.replace("Z", "+00:00")
+                    end_dt = datetime.fromisoformat(end_date_full)
+                else:
+                    end_dt = end_date
+                now = datetime.utcnow().replace(tzinfo=end_dt.tzinfo)
+                if now > end_dt:
+                    is_closed = True
+            except Exception:
+                is_closed = market.get("closed", False)
         else:
-            badge = '<span class="badge-active">Actif</span>'
+            is_closed = market.get("closed", False)
+
+        # Get YES price
+        prices = market.get("outcome_prices", [])
+        yes_price = "—"
+        yes_color = COLORS["text_secondary"]
+        if prices:
+            try:
+                yes_val = float(prices[0]) * 100
+                yes_price = f"{yes_val:.0f}%"
+                # Color based on probability
+                if yes_val >= 70:
+                    yes_color = COLORS["accent_green"]
+                elif yes_val <= 30:
+                    yes_color = COLORS["accent_red"]
+                else:
+                    yes_color = COLORS["accent_blue"]
+            except:
+                pass
+        # Status badge
+        if is_closed:
+            badge = f'<span class="badge-closed">Clôturé</span>'
+        else:
+            time_left = time_until_end(end_date) if end_date else ""
+            if time_left:
+                badge = f'<span class="badge-active">{time_left}</span>'
+            else:
+                badge = '<span class="badge-active">Actif</span>'
     
     return f"""
     <div class="market-card" id="card-{idx}">
