@@ -13,24 +13,25 @@ A paper trading platform for [Polymarket](https://polymarket.com) prediction mar
 ## System Overview
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#fff', 'primaryBorderColor': '#3a6ea5', 'lineColor': '#5c7cfa', 'secondaryColor': '#63c5b8', 'tertiaryColor': '#f8f9fa', 'background': '#ffffff'}}}%%
 flowchart LR
-    subgraph Polymarket
+    subgraph Polymarket[" 🌐 Polymarket APIs"]
         GAMMA[Gamma API]
         CLOB[CLOB API]
         DATA[Data API]
     end
     
-    subgraph Workers
+    subgraph Workers[" ⚙️ Workers"]
         SYNC[polymarket_sync]
         LIVE[live_data_worker]
     end
     
-    subgraph Storage
+    subgraph Storage[" 💾 Storage"]
         MONGO[(MongoDB)]
         REDIS[(Redis)]
     end
     
-    subgraph Application
+    subgraph Application[" 🚀 Application"]
         BACKEND[FastAPI Backend]
         FRONTEND[Streamlit Frontend]
     end
@@ -182,6 +183,7 @@ The backend uses JWT-based authentication with the following characteristics:
 **Protected endpoints** extract the token from the query string, decode it, and verify the user exists and is active. User roles (`user`, `premium_user`, `admin`) enable role-based access control.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#1a1a2e', 'signalColor': '#5c7cfa', 'actorBkg': '#4f86c6', 'actorTextColor': '#fff', 'actorBorder': '#3a6ea5', 'activationBkgColor': '#e8f4f8', 'sequenceNumberColor': '#fff'}}}%%
 sequenceDiagram
     participant Client
     participant Backend
@@ -213,25 +215,26 @@ New portfolios start with a default balance of **$10,000**.
 MongoDB is organized into four separate databases for logical separation:
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#1a1a2e', 'lineColor': '#5c7cfa', 'entityBkg': '#e8f4f8', 'entityBorder': '#4f86c6'}}}%%
 erDiagram
     auth_db {
-        users collection
+        string users
     }
     
     trading_db {
-        portfolios collection
-        trades collection
+        string portfolios
+        string trades
     }
     
     markets_db {
-        markets collection
-        price_history collection
-        open_interest collection
-        sync_state collection
+        string markets
+        string price_history
+        string open_interest
+        string sync_state
     }
     
     system_db {
-        db_registry collection
+        string db_registry
     }
 ```
 
