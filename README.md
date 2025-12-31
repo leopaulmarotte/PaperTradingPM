@@ -15,23 +15,23 @@ A paper trading platform for [Polymarket](https://polymarket.com) prediction mar
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#fff', 'primaryBorderColor': '#3a6ea5', 'lineColor': '#5c7cfa', 'secondaryColor': '#63c5b8', 'tertiaryColor': '#f8f9fa', 'background': '#ffffff'}}}%%
 flowchart LR
-    subgraph Polymarket["Polymarket APIs"]
+    subgraph Polymarket[" 🌐 Polymarket APIs"]
         GAMMA[Gamma API]
         CLOB[CLOB API]
         DATA[Data API]
     end
     
-    subgraph Workers["Workers"]
+    subgraph Workers[" ⚙️ Workers"]
         SYNC[polymarket_sync]
         LIVE[live_data_worker]
     end
     
-    subgraph Storage["Storage"]
+    subgraph Storage[" 💾 Storage"]
         MONGO[(MongoDB)]
         REDIS[(Redis)]
     end
     
-    subgraph Application["Application"]
+    subgraph Application[" 🚀 Application"]
         BACKEND[FastAPI Backend]
         FRONTEND[Streamlit Frontend]
     end
@@ -161,7 +161,126 @@ docker compose run --rm test /tests --cov=app --cov-report=term-missing
 
 ## 2. How to Use the App
 
-*Documentation in progress.*
+This section explains how to navigate and use the Streamlit interface step by step.
+
+---
+
+### 2.1. Login and Account Creation
+
+- **Login Page**: When opening the application, you arrive on the Login page.  
+  - Enter your **email address** and **password**.  
+  - If you don’t have an account yet, click the **Register** button to set up your account.  
+  - Once your account is created, log in with your credentials.  
+
+
+![Login Page](images/login.png)
+
+
+---
+
+### 2.2. Main Navigation
+
+After logging in, the application offers **five main pages** accessible via the side menu:  
+
+1. **Trading**: Explore and trade on available markets.  
+2. **Portfolio**: Create and manage your portfolios, check positions and balances.  
+3. **History**: View the history of all your transactions.  
+4. **Account**: Update personal information and log out.  
+5. **Metrics**: Visualize statistics and metrics on your performance and market activity.  
+
+![sidebar](images/sidebar.png)
+
+---
+
+### 2.3. Trading Page
+
+The Trading Page is where you can explore different Polymarket markets and take positions by clicking 'View Details' to place an order and access more information about the selected market.
+
+- **Explore Markets**:  
+  - Browse the list of Polymarket markets.  
+  - Filter by **active / closed** status or sort by **volume**.  
+  - Search for a specific market using the **search bar**.  
+
+- **View Market Details**:  
+
+![sidebar](images/details.png)
+
+  - Click **View Details** to see full market information:  
+    - **Traded volume**, **liquidity**, **end date**  
+    - Market description via **Description** button  
+    - Price history over the past few days  
+    - Last traded price for **Yes** and **No** tokens  
+  - Click **Refresh Orderbook** to get real-time data  
+
+Once you have created a portfolio and refresh the orderbook, you can place an order. We will see just bellow how to create a portfolio.
+
+![sidebar](images/order.png)
+
+- **Place an Order**:  
+  1. Select a **portfolio** (must be created first).  
+  2. Choose **Buy** or **Sell**.  
+  3. Select the **token** and enter the **quantity**.  
+  4. Optionally, add a **note**.  
+  5. Click **Execute Order**.  
+
+
+
+In order to make a trade, you need first to create a portfolio. Let's see how to create a portfolio.
+
+---
+
+### 2.4. Portfolio Page
+
+- **Create a Portfolio**:  
+  - Go to the **Portfolio** page.  
+  - Click **Create Portfolio**, enter a **name** and **initial amount**.  
+  - Click **Create**.  
+
+Once a portfolio has been created, several buttons allow you to perform actions on it. The **Trading** button takes you directly to the Trading Page to take positions on markets using this portfolio. The **Metrics** button opens the Metrics Page (described below) to view the performance of this portfolio. You can also view the **Details** of the portfolio or **Delete** the portfolio entirely.
+
+![sidebar](images/portfolio.png)
+
+- **View Portfolios and Positions**:  
+  - Created portfolios appear below the form, initially empty.  
+  - Click **Details** to see position composition and performance.  
+  - Available buttons:  
+    - **Modify**: Return to Trading page to adjust positions  
+    - **Liquidate**: Sell all positions and recover cash  
+
+![sidebar](images/composition.png)
+
+So when a portfolio has been created and when a trade has been down, you can see the performance of your portfolio on the Metrics page.
+
+---
+
+### 2.5. Metrics Page
+
+First you need to select a portfolio. Then, two charts are displayed :
+
+- Displays the **P&L evolution** over time for a portfolio.  
+- Filter menu to view **specific position P&L**.  
+
+**Image placeholder**: Interactive P&L chart with filter menu
+
+---
+
+### 2.6. History Page
+
+- Shows the history of **all your transactions**: buys, sells, deposits, withdrawals.  
+- Filter by portfolio or transaction type.  
+- Download history as **CSV** for external analysis.  
+
+**Image placeholder**: Transaction history table with “Download CSV” button
+
+---
+
+### 2.7. Account Page
+
+- Update personal information: you can change your password.
+- **Log out** securely from the application.  
+
+**Image placeholder**: Account page screenshot with editable fields and logout button
+
 
 ---
 
@@ -183,7 +302,7 @@ The backend uses JWT-based authentication with the following characteristics:
 **Protected endpoints** extract the token from the query string, decode it, and verify the user exists and is active. User roles (`user`, `premium_user`, `admin`) enable role-based access control.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#1c1c4cff', 'signalColor': '#5c7cfa', 'actorBkg': '#4f86c6', 'actorTextColor': '#fff', 'actorBorder': '#3a6ea5', 'activationBkgColor': '#e8f4f8', 'sequenceNumberColor': '#fff'}}}%%
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4f86c6', 'primaryTextColor': '#1a1a2e', 'signalColor': '#5c7cfa', 'actorBkg': '#4f86c6', 'actorTextColor': '#fff', 'actorBorder': '#3a6ea5', 'activationBkgColor': '#e8f4f8', 'sequenceNumberColor': '#fff'}}}%%
 sequenceDiagram
     participant Client
     participant Backend
@@ -289,11 +408,6 @@ Streams real-time orderbook data from Polymarket's CLOB WebSocket to Redis.
 
 The worker maintains a live orderbook snapshot in Redis, accessible via the `/market-stream/orderbook` REST endpoint.
 
----
-
-### Frontend (Streamlit)
-
-*Documentation in progress.*
 
 ---
 
