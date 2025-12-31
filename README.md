@@ -1,57 +1,325 @@
 # PaperTradingPM
 
-A Polymarket paper trading platform. Browse real prediction markets, execute simulated trades, track portfolio performance.
+A paper trading platform for [Polymarket](https://polymarket.com) prediction markets. Browse real markets, execute simulated trades, and track portfolio performance—all without risking real money.
+
+*Why Paper Trading?*
+
+1) Practice without risk : test your prediction skills and trading strategies before committing real funds
+2) Legal compliance : Prediction market betting is restricted or prohibited in many jurisdictions. Paper trading lets you participate in the experience without legal concerns
+3) Learning tool : Understand how prediction markets work and how prices move with real market data
 
 ---
 
-## Part 1: Running the Application
+## System Overview
+
+```mermaid
+flowchart LR
+    subgraph Polymarket
+        GAMMA[Gamma API]
+        CLOB[CLOB API]
+        DATA[Data API]
+    end
+    
+    subgraph Workers
+        SYNC[polymarket_sync]
+        LIVE[live_data_worker]
+    end
+    
+    subgraph Storage
+        MONGO[(MongoDB)]
+        REDIS[(Redis)]
+    end
+    
+    subgraph Application
+        BACKEND[FastAPI Backend]
+        FRONTEND[Streamlit Frontend]
+    end
+    
+    GAMMA -->|markets metadata| SYNC
+    CLOB -->|orderbook WebSocket| LIVE
+    DATA -->|open interest| SYNC
+    
+    SYNC -->|batch insert| MONGO
+    LIVE -->|streams| REDIS
+    
+    MONGO --> BACKEND
+    REDIS --> BACKEND
+    BACKEND <-->|REST API| FRONTEND
+```
+
+| Service | Port | Role |
+|---------|------|------|
+| Frontend (Streamlit) | 8501 | User interface |
+| Backend (FastAPI) | 8000 | REST API + WebSocket |
+| MongoDB | 27017 | Persistent storage |
+| Redis | 6379 | Live data cache |
+| polymarket-sync | — | Market metadata sync worker |
+| live-data-worker | — | Orderbook streaming worker |
+
+## Project Structure
+
+```
+PaperTradingPM/
+├── backend/app/
+│   ├── main.py              # App entry, CORS, router mounting
+│   ├── config.py            # Pydantic settings from environment
+│   ├── core/                # Security (JWT, bcrypt), rate limiting
+│   ├── database/            # MongoDB connections, multi-DB registry
+│   ├── models/              # Pydantic models for MongoDB documents
+│   ├── schemas/             # Request/response validation schemas
+│   ├── services/            # Business logic (auth, markets, portfolios)
+│   ├── routers/             # API endpoint definitions
+│   └── dependencies/        # FastAPI dependency injection (auth, roles)
+├── frontend/
+│   ├── main.py              # Streamlit app entry
+│   ├── views/               # Page components (trading, portfolio, etc.)
+│   └── utils/               # API client, formatters, styles
+├── workers/
+│   ├── polymarket_sync/     # Periodic market metadata fetcher
+│   └── live_data_worker/    # Real-time orderbook to Redis
+├── tests/                   # See tests/TESTING.md
+└── docker-compose.yml
+```
+
+---
+
+## 1. Running the Application
+
+> **Note**: These instructions are for **local development** only. The codebase is designed with deployment in mind, but additional configuration is required for production (see [Section 4](#4-implementation-notes--deployment-todos)).
 
 ### Prerequisites
 
 - Docker and Docker Compose (v2+)
+- Git
 - MongoDB Compass (optional, for database inspection)
 
-### Quick Start
+### Step-by-Step Setup
 
-**1. Clone and configure**
+**1. Clone the repository**
 
 ```bash
 git clone <repository-url>
 cd PaperTradingPM
 ```
 
-Create a `.env` file (see `.env.example`):
+**2. Create environment file**
 
-```
+Create a `.env` file in the project root:
+
+```env
 MONGO_URI=mongodb://mongodb:27017
 REDIS_HOST=redis
 REDIS_PORT=6379
-API_KEY=your_polymarket_clob_api_key (it is used for the orderbook access, use this one : 0xc29abf02109df1a522bcb290f44aae33381723ebbdd98d1f5eefdc36800f71cf)
+API_KEY = "POLYMARKET_CLOB_API_KEY"
 CLOB_URL=https://clob.polymarket.com
 JWT_SECRET_KEY=CHANGE_ME_IN_PRODUCTION_USE_STRONG_SECRET
 ```
 
-**2. Build and start**
+API_KEY should be replaced by one's own polymarket CLOB api key
+Specific to the course : we have provided an API_KEY for you to test the app, see in .env.example. 
+We are fully aware that api keys and .env should never be commited, the key corresponds to a throwaway account with no wallet associated, so really there shouldn't be any meaningful risk. We chose this solution for your convenience when grading. The credentials will be revoked once the grading for our project is complete.
+
+**3. Build the containers**
 
 ```bash
 docker compose build
+```
+
+**4. Start all services**
+
+```bash
 docker compose up
 ```
 
-**3. Verify**
+**5. Wait for initial data sync**
 
-| Service | URL |
-|---------|-----|
-| Health check | http://localhost:8000/health |
-| API documentation (Swagger) | http://localhost:8000/docs |
-| Frontend | http://localhost:8501 |
-| MongoDB | mongodb://localhost:27017 |
+On first run, the `polymarket_sync` worker fetches all Polymarket markets. This takes approximately **5 minutes** depending on your connection. Watch the logs associated to this service for progress.
 
-After startup, MongoDB should contain four databases: `auth_db`, `trading_db`, `markets_db`, `system_db`.
+**6. Verify the setup**
 
-### Server Deployment Note
+| Service | URL | Expected |
+|---------|-----|----------|
+| Health check | http://localhost:8000/health | `{"status": "healthy"}` |
+| API docs (Swagger) | http://localhost:8000/docs | Interactive API documentation |
+| Frontend | http://localhost:8501 | Streamlit interface |
+| MongoDB | mongodb://localhost:27017 | 4 databases: `auth_db`, `trading_db`, `markets_db`, `system_db` |
 
-The application is designed for local Docker deployment. For server deployment, you need to modify the CORS whitelist in [backend/app/main.py](backend/app/main.py) (around line 84) to include your server's origin:
+### Running Tests
+
+Tests run in a dedicated Docker service. See [tests/TESTING.md](tests/TESTING.md) for full documentation.
+
+```bash
+# Run all unit tests
+docker compose run --rm test /tests -m "not integration" -v
+
+# Run with coverage
+docker compose run --rm test /tests --cov=app --cov-report=term-missing
+```
+
+---
+
+## 2. How to Use the App
+
+*Documentation in progress.*
+
+---
+
+## 3. How the App Works
+
+### Backend (FastAPI)
+
+#### Authentication
+
+The backend uses JWT-based authentication with the following characteristics:
+
+| Setting | Value |
+|---------|-------|
+| Password hashing | bcrypt (via `passlib`) |
+| Token algorithm | HS256 |
+| Token expiry | **30 minutes** (configurable via `ACCESS_TOKEN_EXPIRE_MINUTES`) |
+| Token delivery | Query parameter (`?token=xxx`) — required for Streamlit compatibility |
+
+**Protected endpoints** extract the token from the query string, decode it, and verify the user exists and is active. User roles (`user`, `premium_user`, `admin`) enable role-based access control.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Backend
+    participant MongoDB
+    
+    Client->>Backend: POST /auth/token (username, password)
+    Backend->>MongoDB: Find user by email
+    MongoDB-->>Backend: User document
+    Backend->>Backend: Verify password (bcrypt)
+    Backend-->>Client: JWT token (30min expiry)
+    
+    Client->>Backend: GET /portfolios?token=xxx
+    Backend->>Backend: Decode & validate JWT
+    Backend->>MongoDB: Fetch user by ID
+    Backend-->>Client: Protected resource
+```
+
+#### Data Validation
+
+All API requests and responses are validated using Pydantic schemas:
+
+- **Models** (`backend/app/models/`): Define MongoDB document structure (User, Portfolio, Trade, MarketMetadata)
+- **Schemas** (`backend/app/schemas/`): Define API request/response shapes with validation rules
+
+New portfolios start with a default balance of **$10,000**.
+
+#### Database Architecture
+
+MongoDB is organized into four separate databases for logical separation:
+
+```mermaid
+erDiagram
+    auth_db {
+        users collection
+    }
+    
+    trading_db {
+        portfolios collection
+        trades collection
+    }
+    
+    markets_db {
+        markets collection
+        price_history collection
+        open_interest collection
+        sync_state collection
+    }
+    
+    system_db {
+        db_registry collection
+    }
+```
+
+| Database | Purpose | Key Indexes |
+|----------|---------|-------------|
+| `auth_db` | User authentication | Unique on `email` |
+| `trading_db` | Portfolios and trade history | `user_id`, compound on `portfolio_id + timestamp` |
+| `markets_db` | Polymarket data cache | Unique on `condition_id` and `slug`, text index on `question` |
+| `system_db` | Cross-database registry | — |
+
+#### Polymarket API Integration
+
+Three public APIs are used (no authentication required):
+
+| API | Base URL | Data Fetched |
+|-----|----------|--------------|
+| Gamma | `https://gamma-api.polymarket.com` | Market metadata (question, outcomes, volume) |
+| CLOB | `https://clob.polymarket.com` | Price history, live orderbook |
+| Data | `https://data-api.polymarket.com` | Open interest, holder counts |
+
+**Lazy loading strategy**: Market data is fetched on-demand. When a user requests a market not in the cache, `MarketService` fetches it from Polymarket, stores it in MongoDB, and returns it. The sync worker keeps the cache fresh in the background. 
+This was an early implementation choice to avoid calling excessively on Polymarket's API and only retrieving what was needed, and this way, information from Polmarket is fetched once for all users.
+
+Full API documentation is available at [http://localhost:8000/docs](http://localhost:8000/docs) when the backend is running.
+
+---
+
+### Workers
+
+#### polymarket_sync
+
+Periodically fetches market metadata from Polymarket and stores it in MongoDB.
+
+| Setting | Value |
+|---------|-------|
+| Batch size | 500 markets per API request |
+| Incremental sync | Every **5 minutes** (active markets only) |
+| Full sync | Every **24 hours** |
+| Progress tracking | `sync_state` collection (resumable) |
+
+The worker transforms raw API responses (parsing JSON strings, converting types) and performs bulk upserts. Each batch is saved immediately, so a full sync can be interrupted and resumed.
+
+#### live_data_worker
+
+Streams real-time orderbook data from Polymarket's CLOB WebSocket to Redis.
+
+| Setting | Value |
+|---------|-------|
+| WebSocket URL | `wss://ws-subscriptions-clob.polymarket.com/ws/market` |
+| Redis stream | `polymarket:orderbook_stream` (capped at 10,000 messages) |
+| Control channel | `live-data-control` (pub/sub for start/stop commands) |
+
+The worker maintains a live orderbook snapshot in Redis, accessible via the `/market-stream/orderbook` REST endpoint.
+
+---
+
+### Frontend (Streamlit)
+
+*Documentation in progress.*
+
+---
+
+## 4. Implementation Notes & Deployment TODOs
+
+### Critical: Rate Limiting Not Implemented
+
+The rate limiting module ([backend/app/core/rate_limit.py](backend/app/core/rate_limit.py)) contains **placeholder functions that always return `True`**. Before deployment:
+
+- Implement sliding window rate limiting using Redis
+- Enforce configured limits:
+  - Login: 5 attempts / 60 seconds per IP
+  - Registration: 10 attempts / 60 seconds per IP
+  - Global: 100 requests / minute
+- Implement account lockout after 10 failed login attempts (30-minute lockout)
+
+### Streamlit WebSocket Limitation
+
+Streamlit does not handle async WebSocket connections well. As a workaround:
+
+- The backend exposes `/market-stream/orderbook` as a REST endpoint
+- The frontend polls this endpoint instead of maintaining a WebSocket connection
+- The WebSocket endpoint (`/ws/live`) exists but is primarily a placeholder
+
+For a production frontend, consider migrating to React or another framework that supports WebSocket connections natively. We actually hesitated to use React at first, but a 10/10 security vulnerability was just found at the time, and Streamlit was a simpler, faster, and still decent solution.
+
+### CORS Configuration for Deployment
+
+For server deployment, update the CORS whitelist in [backend/app/main.py](backend/app/main.py#L84):
 
 ```python
 allow_origins=[
@@ -60,205 +328,22 @@ allow_origins=[
 ]
 ```
 
-The frontend automatically uses the `API_URL` environment variable (defaults to `http://localhost:8000`), which is already set correctly in `docker-compose.yml` for inter-container communication.
+### Test Coverage Gaps
 
-### MongoDB Data Import/Export
+Current tests cover basic functionality (health checks, service methods, formatters). Additional tests needed:
 
-The market sync worker fetches all Polymarket markets on first run, which takes several hours. To skip this, import pre-populated data.
+- Edge cases: market state transitions (active → closed)
+- Trade execution edge cases (insufficient balance, market closed)
+- Concurrent request handling
+- Worker failure recovery
 
-**Export:**
-```bash
-docker exec mongodb mongodump --out=/dump
-docker cp mongodb:/dump ./mongo_backup
-```
+See [tests/TESTING.md](tests/TESTING.md) for current test structure and rationale.
 
-**Import:**
-```bash
-docker cp ./mongo_backup mongodb:/dump
-docker exec mongodb mongorestore /dump
-```
+### Other Notes
 
-### Running Tests
-
-Tests run in a dedicated Docker service with access to all project code.
-
-```bash
-# Run all unit tests
-docker compose run --rm test /tests -m "not integration" -v
-
-# Run specific test file
-docker compose run --rm test /tests/backend/test_services.py -v
-
-# Integration tests (requires services running)
-docker compose up -d mongodb redis backend
-docker compose run --rm test /tests -m integration -v
-
-# With coverage
-docker compose run --rm test /tests --cov=app --cov-report=term-missing
-```
-
----
-
-### Test Structure
-
-```
-tests/
-├── pytest.ini                    # Config: asyncio_mode=auto, markers
-├── conftest.py                   # Global fixtures (fresh timestamps, mock DB/Redis)
-├── fixtures/
-│   ├── polymarket_responses/     # Market JSON fixtures
-│   │   ├── market_fed_decision_october.json
-│   │   ├── market_fed_decision_june.json
-│   │   ├── price_history_fed_october.json
-│   │   ├── active_markets_sample.json
-│   │   └── README.md
-│   └── test_data/
-│       ├── users.json
-│       └── portfolios.json
-├── backend/
-│   ├── conftest.py               # Backend fixtures (mock services, auth bypass)
-│   ├── test_health.py            # Health endpoint tests
-│   ├── test_websocket.py         # WS connection, subscription, ping/pong
-│   ├── test_database.py          # Connection, indexes, registry tests
-│   └── test_services.py          # Password hashing, MarketService unit tests
-├── workers/
-│   ├── test_polymarket_sync.py   # Batch fetching, transform_market, resume
-│   └── test_live_data_worker.py  # Redis streams, pause flag
-├── frontend/
-│   ├── conftest.py               # Mock session_state, API responses
-│   └── test_formatters.py        # Number, currency, date formatting
-└── integration/
-    ├── conftest.py               # Live API fixtures (URLs, timeouts)
-    ├── test_polymarket_api_live.py   # Real Polymarket API tests
-    └── test_full_trading_flow.py     # End-to-end backend tests
-```
-
-### Key Testing Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| **mongomock + mongomock-motor** | Isolated MongoDB testing without real DB |
-| **fakeredis** | Mock Redis for cache/stream tests |
-| **Fresh timestamps on fixtures** | Prevents cache staleness issues (`load_fixture_with_fresh_timestamps()`) |
-| **Closed markets (fed-decision-*)** | Resolved markets don't change, stable for assertions |
-| **Unit tests for pure functions** | Tests services, formatters, and helpers without FastAPI mocking |
-| **Integration tests for endpoints** | Endpoint tests run against live backend (marked `integration`) |
-
-
-
-
-## Part 2: Architecture and Implementation
-
-### System Overview
-
-```
-Polymarket APIs --> Workers --> MongoDB --> FastAPI Backend --> Frontend
-                                                 |
-                                               Redis (live data)
-```
-
-| Service | Port | Role |
-|---------|------|------|
-| Frontend (Streamlit) | 8501 | Debug/test UI (not production) |
-| Backend (FastAPI) | 8000 | REST API + WebSocket |
-| MongoDB | 27017 | Persistent storage |
-| Redis | 6379 | Live data cache and pub/sub |
-| polymarket-sync | - | Market metadata sync worker |
-| live-data-worker | - | Orderbook streaming worker |
-
-### Project Structure
-
-```
-PaperTradingPM/
-├── backend/app/
-│   ├── main.py              # App entry, router mounting
-│   ├── config.py            # Pydantic settings
-│   ├── core/                # Security (JWT), rate limiting
-│   ├── database/            # MongoDB connections, multi-DB setup
-│   ├── models/              # Pydantic models for MongoDB documents
-│   ├── schemas/             # Request/response schemas
-│   ├── services/            # Business logic layer
-│   ├── routers/             # API endpoints
-│   └── dependencies/        # FastAPI dependency injection
-├── frontend/                # Streamlit debug UI
-├── workers/
-│   ├── polymarket_sync/     # Market metadata sync
-│   └── live_data_worker/    # Orderbook streaming to Redis
-├── tests/
-└── docker-compose.yml
-```
-
-### Database Architecture
-
-Four separate MongoDB databases:
-
-| Database | Collections | Purpose |
-|----------|-------------|---------|
-| `auth_db` | users | Authentication |
-| `trading_db` | portfolios, trades, positions | Trading data |
-| `markets_db` | markets, price_history, open_interest, sync_state | Polymarket cache |
-| `system_db` | rate_limits, settings | System configuration |
-
-### Polymarket API Integration
-
-Three public APIs (no authentication required):
-
-| API | Base URL | Data |
-|-----|----------|------|
-| Gamma | gamma-api.polymarket.com | Market metadata |
-| CLOB | clob.polymarket.com | Price history, orderbooks |
-| Data | data-api.polymarket.com | Open interest, positions |
-
-Implementation: [backend/app/services/polymarket_api.py](backend/app/services/polymarket_api.py)
-
-### Market Data Strategy
-
-**Lazy loading**: Markets are fetched from Polymarket on-demand if not in MongoDB, then cached. The sync worker keeps the cache fresh in the background.
-
-**Sync worker** (`workers/polymarket_sync/sync_markets.py`):
-- Batch size: 500 markets per API request
-- Incremental saves: each batch saved immediately (full sync takes hours)
-- Resumable: tracks progress in `sync_state` collection
-- Two modes: full sync (every 24h), incremental sync (every 5min, active markets only)
-
-**Live data worker** (`workers/live_data_worker/redis_websocket_sync.py`):
-- Connects to Polymarket CLOB WebSocket
-- Streams orderbook updates to Redis
-- Supports pause/resume via Redis flag
-
-### Authentication
-
-- JWT tokens via python-jose, passwords hashed with bcrypt
-- Token expiry: 30 minutes (configurable)
-- Token delivery: query parameter (`?token=xxx`) for Streamlit compatibility
-- User roles: `user`, `premium_user`, `admin`
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | System status |
-| `/auth/register` | POST | Create user |
-| `/auth/token` | POST | Login (OAuth2 form) |
-| `/auth/me` | GET | Current user |
-| `/markets` | GET | List with filters |
-| `/markets/by-slug/{slug}` | GET | Single market (lazy-loads if needed) |
-| `/markets/by-slug/{slug}/prices` | GET | Price history |
-| `/portfolios` | GET/POST | List/create |
-| `/portfolios/{id}/trades` | GET/POST | Trade history/execution |
-| `/market-stream/subscribe` | POST | Subscribe to market updates |
-| `/ws/live` | WebSocket | Real-time data |
-
-Authentication for protected endpoints:
-```
-GET /portfolios?token=your_jwt_token
-```
-
-### Known Implementation Notes
-
-- CLOB API returns empty array for markets with no trade history
-- Rate limiting placeholders exist in `core/rate_limit.py` ; they are not yet implemented, but should be before deploying to production.
-- WebSocket push logic in `routers/ws.py` is a placeholder ; streamlit doesn't support well the async. 
+- CLOB API returns an empty array for markets with no trade history
+- The `JWT_SECRET_KEY` in `.env` must be changed for production
+- MongoDB has no authentication configured (add credentials for production)
 
 ---
 
